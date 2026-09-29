@@ -1,0 +1,421 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>16 · 电流环 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>电流环</h3>
+
+    <div style="background:#3fb95022;border-left:3px solid #3fb950;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#3fb950;">第三部分 · 控制</b><br>
+      内环 · 最快的环
+    </div>
+
+    <div class="section-title">仿真时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="5" step="0.01" value="0" style="width:100%;">
+
+    <div class="section-title">id 给定 <span id="v-idref">0.00</span></div>
+    <input type="range" id="s-idref" min="-1" max="1" step="0.05" value="0" style="width:100%;">
+
+    <div class="section-title">iq 给定 <span id="v-iqref">0.50</span></div>
+    <input type="range" id="s-iqref" min="-1.5" max="1.5" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="section-title">电流环 Kp <span id="v-kp">2.00</span></div>
+    <input type="range" id="s-kp" min="0.1" max="20" step="0.1" value="2" style="width:100%;">
+
+    <div class="section-title">电流环 Ki <span id="v-ki">20.0</span></div>
+    <input type="range" id="s-ki" min="0" max="200" step="1" value="20" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 开始仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#3fb950;">id_ref</span><span id="d-idref">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">id</span><span id="d-id">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">iq_ref</span><span id="d-iqref">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">iq</span><span id="d-iq">0.000</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#58a6ff;">vd*</span><span id="d-vd">0.000</span></div>
+      <div class="row"><span style="color:#58a6ff;">vq*</span><span id="d-vq">0.000</span></div>
+    </div>
+
+    <div class="section-title">电流环原理</div>
+    <div class="hint">
+      <b>内环</b>（最快的环）：<br>
+      目标：让 <b>id/iq</b> 精确跟踪 <b>id_ref/iq_ref</b>。<br>
+      <br>
+      两个独立 PI：<br>
+      <span style="font-family:monospace;">vd* = Kp·e_id + Ki·∫e_id</span><br>
+      <span style="font-family:monospace;">vq* = Kp·e_iq + Ki·∫e_iq</span><br>
+      <br>
+      <b style="color:#f0b429;">响应快</b>（~10kHz），是速度环的"底层执行器"。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="300"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">电流跟踪（参考 vs 实际）</div>
+      <canvas id="cv-wave" data-fit="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>电流环（内环）：</b>FOC 双闭环的最内层，也是最快的一层（带宽 ~10 kHz）。<br>
+  它的任务：把<b>电流</b>精确控制在目标值上。id 的目标通常是 0（表贴式 PMSM，MTPA 特例），
+  iq 的目标来自速度环输出。<br>
+  两个 PI 调节器（d 轴和 q 轴各一个）分别输出 <b>vd*</b> 和 <b>vq*</b>，
+  然后经过逆 Park → SVPWM → 逆变器，最终作用于电机。<br>
+  <b>关键</b>：电流环的带宽要足够高，才能"瞬间"跟踪速度环的指令——这样速度环才能"看不到"电流环的动态，
+  两个环才能稳定工作。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 1.0,
+  id_ref: 0,
+  iq_ref: 0.5,
+  Kp: 2.0,
+  Ki: 20,
+  motor: null,
+  pi_d: null, pi_q: null,
+  history: [],
+  dt: 0.0005,
+  lastData: null,
+};
+
+const $ = id => document.getElementById(id);
+
+function resetSim() {
+  state.motor = FOC_MOTOR.createState();
+  state.pi_d = FOC_MOTOR.createPIController(state.Kp, state.Ki);
+  state.pi_q = FOC_MOTOR.createPIController(state.Kp, state.Ki);
+  state.t = 0;
+  state.history = [];
+  state.lastData = { id: 0, iq: 0, id_ref: state.id_ref, iq_ref: state.iq_ref, vd: 0, vq: 0 };
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+}
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-idref').oninput = e => { state.id_ref = +e.target.value; $('v-idref').textContent = state.id_ref.toFixed(2); };
+$('s-iqref').oninput = e => { state.iq_ref = +e.target.value; $('v-iqref').textContent = state.iq_ref.toFixed(2); };
+$('s-kp').oninput = e => {
+  state.Kp = +e.target.value; $('v-kp').textContent = state.Kp.toFixed(2);
+  if (state.pi_d) state.pi_d.kp = state.Kp;
+  if (state.pi_q) state.pi_q.kp = state.Kp;
+};
+$('s-ki').oninput = e => {
+  state.Ki = +e.target.value; $('v-ki').textContent = state.Ki.toFixed(0);
+  if (state.pi_d) state.pi_d.ki = state.Ki;
+  if (state.pi_q) state.pi_q.ki = state.Ki;
+};
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 开始仿真';
+};
+
+$('btn-reset').onclick = () => {
+  resetSim();
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 开始仿真';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+// ===== 仿真一步 =====
+function stepOnce() {
+  const dt = state.dt;
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  const m = state.motor;
+
+  // 电流环：两个 PI
+  const e_id = state.id_ref - m.id;
+  const e_iq = state.iq_ref - m.iq;
+  const vd_star = FOC_MOTOR.stepPI(state.pi_d, e_id, dt, 1.0);
+  const vq_star = FOC_MOTOR.stepPI(state.pi_q, e_iq, dt, 1.0);
+
+  // 施加到电机（开环速度——固定 ω_ref 对应的频率，但电流环直接控 dq 电压）
+  // 为了简化：让电机转速固定为 0（纯电流环测试）
+  const newSt = FOC_MOTOR.stepStandard(m, vd_star, vq_star, 0, dt, P);
+  // 冻结转速（纯电流环）
+  newSt.omega_m = 0;
+  newSt.theta_e = 0;
+  state.motor = newSt;
+
+  state.lastData = {
+    id: newSt.id, iq: newSt.iq,
+    id_ref: state.id_ref, iq_ref: state.iq_ref,
+    vd: vd_star, vq: vq_star,
+  };
+  state.history.push({ t: state.t, ...state.lastData });
+}
+
+function trimHistory() {
+  const MAX = 3000;
+  if (state.history.length > MAX) {
+    const thin = [];
+    for (let i = 0; i < state.history.length; i += 2) thin.push(state.history[i]);
+    state.history = thin;
+  }
+}
+
+// ===== 画布 =====
+const cvMain = $('cv-main'), ctxM = cvMain.getContext('2d');
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxM.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2 + 10;
+  const boxW = 100, boxH = 48;
+  const gap = 28;
+
+  const blocks = [
+    { name: 'id_ref', sub: '目标', color: '#3fb950' },
+    { name: 'PI_d',   sub: 'Kp+Ki', color: '#58a6ff' },
+    { name: 'vd*',    sub: '电压', color: '#58a6ff' },
+    { name: '电机',    sub: '(d 轴)', color: '#3fb950' },
+    { name: 'id',     sub: '反馈', color: '#3fb950' },
+  ];
+
+  const totalW = boxW * blocks.length + gap * (blocks.length - 1);
+  const startX = (W - totalW) / 2;
+  const y1 = cy - boxH - 12;
+
+  // 上层：d 轴
+  blocks.forEach((b, i) => {
+    const x = startX + i * (boxW + gap);
+    ctxM.fillStyle = b.color + '22';
+    ctxM.strokeStyle = b.color;
+    ctxM.lineWidth = 2;
+    ctxM.fillRect(x, y1, boxW, boxH);
+    ctxM.strokeRect(x, y1, boxW, boxH);
+    ctxM.fillStyle = b.color;
+    ctxM.font = 'bold 12px sans-serif';
+    ctxM.textAlign = 'center';
+    ctxM.fillText(b.name, x + boxW/2, y1 + boxH/2 - 2);
+    ctxM.font = '10px sans-serif';
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText(b.sub, x + boxW/2, y1 + boxH/2 + 14);
+    ctxM.textAlign = 'start';
+    if (i < blocks.length - 1) {
+      ctxM.strokeStyle = '#7d8590'; ctxM.lineWidth = 1.5;
+      ctxM.beginPath();
+      ctxM.moveTo(x + boxW, y1 + boxH/2);
+      ctxM.lineTo(x + boxW + gap, y1 + boxH/2);
+      ctxM.stroke();
+    }
+  });
+
+  // 下层：q 轴
+  const blocksQ = [
+    { name: 'iq_ref', sub: '目标', color: '#d29922' },
+    { name: 'PI_q',   sub: 'Kp+Ki', color: '#58a6ff' },
+    { name: 'vq*',    sub: '电压', color: '#58a6ff' },
+    { name: '电机',    sub: '(q 轴)', color: '#d29922' },
+    { name: 'iq',     sub: '反馈', color: '#d29922' },
+  ];
+  const y2 = cy + 12;
+  blocksQ.forEach((b, i) => {
+    const x = startX + i * (boxW + gap);
+    ctxM.fillStyle = b.color + '22';
+    ctxM.strokeStyle = b.color;
+    ctxM.lineWidth = 2;
+    ctxM.fillRect(x, y2, boxW, boxH);
+    ctxM.strokeRect(x, y2, boxW, boxH);
+    ctxM.fillStyle = b.color;
+    ctxM.font = 'bold 12px sans-serif';
+    ctxM.textAlign = 'center';
+    ctxM.fillText(b.name, x + boxW/2, y2 + boxH/2 - 2);
+    ctxM.font = '10px sans-serif';
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText(b.sub, x + boxW/2, y2 + boxH/2 + 14);
+    ctxM.textAlign = 'start';
+    if (i < blocksQ.length - 1) {
+      ctxM.strokeStyle = '#7d8590'; ctxM.lineWidth = 1.5;
+      ctxM.beginPath();
+      ctxM.moveTo(x + boxW, y2 + boxH/2);
+      ctxM.lineTo(x + boxW + gap, y2 + boxH/2);
+      ctxM.stroke();
+    }
+  });
+
+  // 标题
+  ctxM.fillStyle = '#e6edf3';
+  ctxM.font = 'bold 13px sans-serif';
+  ctxM.fillText('电流环：d 轴 + q 轴 两个独立 PI', 12, 22);
+  ctxM.fillStyle = '#7d8590';
+  ctxM.font = '11px sans-serif';
+  ctxM.fillText('（内环 · 响应快 · 带宽 ~10kHz）', 12, 40);
+}
+
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 40, midY = H/2;
+
+  ctxW.strokeStyle = '#30363d';
+  ctxW.beginPath(); ctxW.moveTo(pad, midY); ctxW.lineTo(W-pad, midY); ctxW.stroke();
+
+  const tMax = Math.max(5, state.history.length ? state.history[state.history.length-1].t : 0);
+  ctxW.fillStyle = '#7d8590'; ctxW.font = '10px sans-serif';
+  for (let k = 0; k <= 5; k++) {
+    const x = pad + (W-2*pad) * k/5;
+    ctxW.fillText((k*tMax/5).toFixed(1)+'s', x-14, H-6);
+  }
+
+  if (state.history.length < 2) {
+    ctxW.fillStyle = '#7d8590'; ctxW.font = '12px sans-serif';
+    ctxW.fillText('按"开始仿真"查看波形', W/2 - 60, midY - 10);
+    return;
+  }
+
+  let iMax = 0.5;
+  state.history.forEach(h => {
+    iMax = Math.max(iMax, Math.abs(h.id), Math.abs(h.iq), Math.abs(h.id_ref), Math.abs(h.iq_ref));
+  });
+  iMax *= 1.2;
+
+  const amp = (H/2 - 20) / iMax;
+  const xNow = pad + (W-2*pad) * Math.min(1, state.t / tMax);
+
+  // id_ref（虚线）
+  ctxW.strokeStyle = '#3fb950'; ctxW.setLineDash([4,3]); ctxW.lineWidth = 1;
+  ctxW.beginPath();
+  ctxW.moveTo(pad, midY - state.id_ref * amp);
+  ctxW.lineTo(pad + (W-2*pad) * (state.history[state.history.length-1].t / tMax), midY - state.id_ref * amp);
+  ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // iq_ref（虚线）
+  ctxW.strokeStyle = '#d29922'; ctxW.setLineDash([4,3]); ctxW.lineWidth = 1.5;
+  ctxW.beginPath();
+  ctxW.moveTo(pad, midY - state.iq_ref * amp);
+  ctxW.lineTo(pad + (W-2*pad) * (state.history[state.history.length-1].t / tMax), midY - state.iq_ref * amp);
+  ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // id
+  ctxW.strokeStyle = '#3fb950'; ctxW.lineWidth = 2;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = pad + (W-2*pad) * (h.t / tMax);
+    const y = midY - h.id * amp;
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  // iq
+  ctxW.strokeStyle = '#d29922'; ctxW.lineWidth = 2;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = pad + (W-2*pad) * (h.t / tMax);
+    const y = midY - h.iq * amp;
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  // 时间游标
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, 6); ctxW.lineTo(xNow, H-6); ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // 图例
+  ctxW.font = '11px sans-serif';
+  ctxW.fillStyle = '#3fb950'; ctxW.fillText('id_ref / id', pad + 6, 14);
+  ctxW.fillStyle = '#d29922'; ctxW.fillText('iq_ref / iq', pad + 110, 14);
+
+  // 当前值
+  const last = state.history[state.history.length-1];
+  ctxW.fillStyle = '#3fb950'; ctxW.font = '11px monospace';
+  ctxW.fillText('id = ' + last.id.toFixed(3) + ' (ref ' + last.id_ref.toFixed(2) + ')', pad + 6, H - 24);
+  ctxW.fillStyle = '#d29922';
+  ctxW.fillText('iq = ' + last.iq.toFixed(3) + ' (ref ' + last.iq_ref.toFixed(2) + ')', pad + 6, H - 10);
+}
+
+function draw() {
+  drawMain();
+  drawWave();
+  const d = state.lastData;
+  if (d) {
+    $('d-idref').textContent = d.id_ref.toFixed(3);
+    $('d-id').textContent = d.id.toFixed(3);
+    $('d-iqref').textContent = d.iq_ref.toFixed(3);
+    $('d-iq').textContent = d.iq.toFixed(3);
+    $('d-vd').textContent = d.vd.toFixed(3);
+    $('d-vq').textContent = d.vq.toFixed(3);
+  }
+}
+
+window.addEventListener('load', () => { resetSim(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  let realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  const steps = Math.max(1, Math.round(realDt / state.dt));
+  for (let k = 0; k < steps; k++) {
+    state.t += state.dt;
+    stepOnce();
+  }
+  trimHistory();
+
+  $('s-t').value = Math.min(5, state.t);
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetSim();
+draw();
+</script>
+</body>
+</html>

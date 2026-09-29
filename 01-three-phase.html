@@ -1,0 +1,278 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>01 · 三相电流 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.8; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div style="background:#58a6ff22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">第一部分 · 坐标变换</b><br>
+      三相电流是 FOC 的起点
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="2" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">电流幅值 I <span id="v-I">1.00</span></div>
+    <input type="range" id="s-I" min="0.2" max="1.5" step="0.01" value="1" style="width:100%;">
+
+    <div class="section-title">电频率 f <span id="v-f">1.00 Hz</span></div>
+    <input type="range" id="s-f" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#f85149;">ia</span><span id="v-ia">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">ib</span><span id="v-ib">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">ic</span><span id="v-ic">0.000</span></div>
+    </div>
+
+    <div class="section-title">公式</div>
+    <div class="info-box" style="line-height:2;">
+      <div style="color:#f85149;">ia = I·cos(ωt)</div>
+      <div style="color:#3fb950;">ib = I·cos(ωt − 120°)</div>
+      <div style="color:#d29922;">ic = I·cos(ωt + 120°)</div>
+      <div style="color:#7d8590;margin-top:6px;">ia + ib + ic = 0</div>
+    </div>
+
+    <div class="hint">
+      三相电流是时间上互差 120° 的正弦波。它们的大小随时间变化，但合成效果是一个旋转的磁场——这是下一课要讲的。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">三相电流波形</div>
+      <canvas id="cv-wave" data-fit="360"></canvas>
+    </div>
+
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">三相电流矢量（脉振）</div>
+      <canvas id="cv-vec" data-fit="360"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>三相电流是时间上互差 120° 电角度的正弦波，即
+  <span style="font-family:monospace;color:#d2a8ff;">ia = I·cos(ωt)，ib = I·cos(ωt−120°)，ic = I·cos(ωt+120°)</span>。
+  因为三相绕组在空间上也互差 120°，所以当三相电流通入绕组时，它们会产生三个"脉振"的磁动势——
+  每个磁动势的**方向固定**（沿该相绕组轴），但**大小随时间**正弦变化。
+  下一课会看到：这三个脉振磁动势**合成**后，会形成一个**旋转**的磁动势矢量。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+const state = { t: 0, I: 1, f: 1, speed: 0.5, playing: false, everStarted: false };
+
+const $ = id => document.getElementById(id);
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-I').oninput = e => { state.I = +e.target.value; $('v-I').textContent = state.I.toFixed(2); draw(); };
+$('s-f').oninput = e => { state.f = +e.target.value; $('v-f').textContent = state.f.toFixed(2)+' Hz'; syncTimeRange(); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+function waveTimeMax(f) { return Math.max(1, 2/f); }
+function syncTimeRange() {
+  const tMax = waveTimeMax(state.f);
+  $('s-t').max = tMax;
+  if (state.t > tMax) state.t = tMax;
+}
+
+function phaseCurrents(t, I, f) {
+  const th = 2 * Math.PI * f * t;
+  return {
+    ia: I * Math.cos(th),
+    ib: I * Math.cos(th - D2R(120)),
+    ic: I * Math.cos(th + D2R(120)),
+    th
+  };
+}
+
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+const cvVec = $('cv-vec'), ctxV = cvVec.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 波形 =====
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 40, midY = H/2;
+  const { I, f } = state;
+
+  // 中线
+  ctxW.strokeStyle = '#30363d';
+  ctxW.beginPath(); ctxW.moveTo(pad, midY); ctxW.lineTo(W-pad, midY); ctxW.stroke();
+
+  const tMax = waveTimeMax(f);
+  // 时间轴刻度
+  ctxW.fillStyle = '#7d8590'; ctxW.font = '11px sans-serif';
+  for (let k = 0; k <= 4; k++) {
+    const x = pad + (W-2*pad) * k/4;
+    ctxW.fillText((k*tMax/4).toFixed(2)+'s', x-16, H-8);
+  }
+
+  const xNow = pad + (W-2*pad) * (state.t / tMax);
+  const amp = H/2 - 30;
+  const colors = ['#f85149', '#3fb950', '#d29922'];
+  const phases = [0, -120, 120];
+  const labels = ['ia', 'ib', 'ic'];
+
+  phases.forEach((ph, idx) => {
+    ctxW.strokeStyle = colors[idx]; ctxW.lineWidth = 2;
+    ctxW.beginPath();
+    for (let px = 0; px <= W-2*pad; px++) {
+      const tt = (px / (W-2*pad)) * tMax;
+      const val = I * Math.cos(2*Math.PI*f*tt + D2R(ph));
+      const x = pad + px, y = midY - val * amp;
+      if (px === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+    }
+    ctxW.stroke();
+  });
+
+  // 当前点
+  const { ia, ib, ic } = phaseCurrents(state.t, I, f);
+  [ia, ib, ic].forEach((val, idx) => {
+    const y = midY - val * amp;
+    ctxW.fillStyle = colors[idx];
+    ctxW.beginPath(); ctxW.arc(xNow, y, 5, 0, 2*Math.PI); ctxW.fill();
+  });
+
+  // 时间游标
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, 10); ctxW.lineTo(xNow, H-10); ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // 图例
+  ctxW.font = '12px sans-serif';
+  labels.forEach((lb, idx) => {
+    ctxW.fillStyle = colors[idx];
+    ctxW.fillText(lb, pad + 8 + idx*40, 18);
+  });
+}
+
+// ===== 矢量图（三个脉振矢量）=====
+function drawVec() {
+  const W = cvVec.clientWidth, H = cvVec.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxV.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const scale = Math.min(W, H) * 0.30;
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+
+  // 网格圆
+  ctxV.strokeStyle = '#21262d'; ctxV.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    ctxV.beginPath(); ctxV.arc(cx, cy, scale*k/2, 0, 2*Math.PI); ctxV.stroke();
+  }
+  // 轴
+  ctxV.strokeStyle = '#30363d';
+  ctxV.beginPath(); ctxV.moveTo(0, cy); ctxV.lineTo(W, cy); ctxV.stroke();
+  ctxV.beginPath(); ctxV.moveTo(cx, 0); ctxV.lineTo(cx, H); ctxV.stroke();
+
+  // 三相绕组轴（A=0°, B=120°, C=240°）
+  const axes = [
+    { name: 'A', ang: 0,   color: '#f85149', i: ia },
+    { name: 'B', ang: 120, color: '#3fb950', i: ib },
+    { name: 'C', ang: 240, color: '#d29922', i: ic },
+  ];
+
+  axes.forEach(a => {
+    const rad = D2R(a.ang);
+    // 轴虚线
+    ctxV.setLineDash([4,4]); ctxV.strokeStyle = a.color + '40';
+    ctxV.beginPath(); ctxV.moveTo(cx, cy);
+    ctxV.lineTo(cx + Math.cos(rad)*scale*1.4, cy - Math.sin(rad)*scale*1.4);
+    ctxV.stroke(); ctxV.setLineDash([]);
+    // 标签
+    ctxV.fillStyle = a.color; ctxV.font = 'bold 13px sans-serif';
+    ctxV.fillText(a.name,
+      cx + Math.cos(rad)*scale*1.5 - 4,
+      cy - Math.sin(rad)*scale*1.5 + 4);
+    // 矢量（脉振）
+    arrow(ctxV, cx, cy,
+      cx + Math.cos(rad)*a.i*scale,
+      cy - Math.sin(rad)*a.i*scale,
+      a.color, 2.5, 8);
+  });
+
+  // 标题
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '12px sans-serif';
+  ctxV.fillText('三相脉振矢量（方向固定，长度随时间变）', 12, 20);
+}
+
+function draw() { drawWave(); drawVec(); }
+
+window.addEventListener('load', () => { syncTimeRange(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = waveTimeMax(state.f);
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+
+  // 更新数值
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+  $('v-ia').textContent = ia.toFixed(3);
+  $('v-ib').textContent = ib.toFixed(3);
+  $('v-ic').textContent = ic.toFixed(3);
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+syncTimeRange();
+draw();
+</script>
+</body>
+</html>

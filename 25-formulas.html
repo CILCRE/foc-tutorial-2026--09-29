@@ -1,0 +1,316 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>25 · 公式汇总 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .formula-card {
+    background:#161b22; border:1px solid #30363d; border-radius:8px;
+    padding:16px; margin-bottom:12px;
+  }
+  .formula-card .fc-title {
+    font-size:13px; font-weight:600; margin-bottom:10px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .formula-card .fc-eq {
+    font-family:monospace; font-size:13px; line-height:2.2; color:#c9d1d9;
+    background:#0d1117; border-radius:4px; padding:10px 14px;
+  }
+  .formula-card .fc-note {
+    font-size:11px; color:#7d8590; margin-top:10px; line-height:1.7;
+  }
+  .part-header {
+    display:flex; align-items:center; gap:10px;
+    padding:8px 0 12px; border-bottom:2px solid; margin-bottom:16px;
+  }
+  .part-num { font-size:20px; font-weight:800; }
+  .part-title { font-size:16px; font-weight:700; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>公式汇总</h3>
+
+    <div style="background:#f8514922;border-left:3px solid #f85149;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f85149;">第五部分 · 综合与硬件</b><br>
+      所有核心公式速查
+    </div>
+
+    <div class="section-title">目录（可点击跳转）</div>
+    <div class="info-box" style="line-height:2.2;">
+      <div>① <a href="#f1" style="color:#58a6ff;text-decoration:none;">坐标变换</a></div>
+      <div>② <a href="#f2" style="color:#f0b429;text-decoration:none;">SVPWM</a></div>
+      <div>③ <a href="#f3" style="color:#3fb950;text-decoration:none;">控制</a></div>
+      <div>④ <a href="#f4" style="color:#d2a8ff;text-decoration:none;">PI 调参</a></div>
+      <div>⑤ <a href="#f5" style="color:#f85149;text-decoration:none;">硬件/物理</a></div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">符号约定</div>
+    <div class="info-box" style="line-height:2;">
+      <div><span style="color:#58a6ff;">ia,ib,ic</span>：三相电流</div>
+      <div><span style="color:#58a6ff;">iα,iβ</span>：两相静止电流</div>
+      <div><span style="color:#d2a8ff;">id,iq</span>：两相旋转电流</div>
+      <div><span style="color:#58a6ff;">vα,vβ</span>：静止电压矢量</div>
+      <div><span style="color:#f0b429;">θ</span>：转子电角度</div>
+      <div><span style="color:#f0b429;">ω</span>：机械角速度</div>
+      <div><span style="color:#3fb950;">Ts</span>：PWM 周期</div>
+      <div><span style="color:#3fb950;">Vdc</span>：母线电压</div>
+    </div>
+
+    <div class="hint" style="margin-top:12px;">
+      <b>使用建议：</b><br>
+      这是整个教程的公式索引，方便复习查表。点目录项可快速跳转。
+    </div>
+  </div>
+
+  <div>
+    <!-- 第一部分 -->
+    <div class="stage" id="f1">
+      <div class="part-header" style="border-color:#58a6ff;">
+        <span class="part-num" style="color:#58a6ff;">①</span>
+        <span class="part-title" style="color:#58a6ff;">坐标变换</span>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #58a6ff;">
+        <div class="fc-title" style="color:#58a6ff;">Clarke 变换（3→2 相，等幅值）</div>
+        <div class="fc-eq">
+          iα = ia<br>
+          iβ = (ia + 2·ib) / √3
+        </div>
+        <div class="fc-note">把三相电流投影到 α-β 平面。合成矢量幅值 = 1.0·I（等幅值形式）。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #d2a8ff;">
+        <div class="fc-title" style="color:#d2a8ff;">Park 变换（α-β → d-q）</div>
+        <div class="fc-eq">
+          id =  iα·cosθ + iβ·sinθ<br>
+          iq = −iα·sinθ + iβ·cosθ
+        </div>
+        <div class="fc-note">θ 是转子电角度（来自编码器/观测器）。旋转的 α-β 变成静止的 d-q。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #d2a8ff;">
+        <div class="fc-title" style="color:#d2a8ff;">逆 Park 变换（d-q → α-β）</div>
+        <div class="fc-eq">
+          vα = vd·cosθ − vq·sinθ<br>
+          vβ = vd·sinθ + vq·cosθ
+        </div>
+        <div class="fc-note">把 PI 算出的 d-q 电压指令转回 α-β 坐标，送给 SVPWM。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #58a6ff;">
+        <div class="fc-title" style="color:#58a6ff;">逆 Clarke 变换（2→3 相，等幅值）</div>
+        <div class="fc-eq">
+          va = vα<br>
+          vb = −½·vα + (√3/2)·vβ<br>
+          vc = −½·vα − (√3/2)·vβ
+        </div>
+        <div class="fc-note">SVPWM 不需要逆 Clarke；传统 SPWM 才需要。</div>
+      </div>
+    </div>
+
+    <!-- 第二部分 -->
+    <div class="stage" id="f2" style="margin-top:16px;">
+      <div class="part-header" style="border-color:#f0b429;">
+        <span class="part-num" style="color:#f0b429;">②</span>
+        <span class="part-title" style="color:#f0b429;">SVPWM</span>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f0b429;">
+        <div class="fc-title" style="color:#f0b429;">扇区判断</div>
+        <div class="fc-eq">
+          θ = atan2(vβ, vα)<br>
+          θ &lt; 0 → θ += 2π<br>
+          扇区 = ⌊θ / (π/3)⌋ + 1
+        </div>
+        <div class="fc-note">六边形被分为 6 个扇形，每个 60°。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f0b429;">
+        <div class="fc-title" style="color:#f0b429;">中间变量 X/Y/Z</div>
+        <div class="fc-eq">
+          X = √3 · vβ · Ts / Vdc<br>
+          Y = (√3/2·vβ + 3/2·vα) · Ts / Vdc<br>
+          Z = (√3/2·vβ − 3/2·vα) · Ts / Vdc
+        </div>
+        <div class="fc-note">用于计算两个相邻基本矢量的作用时间。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f0b429;">
+        <div class="fc-title" style="color:#f0b429;">T1/T2 时间分配（各扇区不同）</div>
+        <div class="fc-eq">
+          扇区 1: T1 = −Z, T2 =  X<br>
+          扇区 2: T1 =  Z, T2 =  Y<br>
+          扇区 3: T1 =  X, T2 = −Y<br>
+          扇区 4: T1 = −X, T2 =  Z<br>
+          扇区 5: T1 = −Y, T2 = −Z<br>
+          扇区 6: T1 =  Y, T2 = −X<br>
+          T0 = Ts − T1 − T2
+        </div>
+        <div class="fc-note">T1 = 起始矢量作用时间，T2 = 结束矢量，T0 = 零矢量。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f0b429;">
+        <div class="fc-title" style="color:#f0b429;">三相占空比（各扇区不同）</div>
+        <div class="fc-eq">
+          ta = (Ts − T1 − T2) / 2<br>
+          tb = ta + T1<br>
+          tc = tb + T2<br>
+          然后按扇区映射到 Ta/Tb/Tc
+        </div>
+        <div class="fc-note">最终三相占空比 = Ta/Tb/Tc / Ts。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f0b429;">
+        <div class="fc-title" style="color:#f0b429;">过调制边界</div>
+        <div class="fc-eq">
+          内切圆 = Vdc / √3 ≈ 0.577 · Vdc<br>
+          六边形顶点 = 2/3 · Vdc ≈ 0.667 · Vdc
+        </div>
+        <div class="fc-note">|Vref| ≤ 内切圆：一定线性；内切圆 &lt; |Vref| &lt; 顶点：部分方向过调制；|Vref| &gt; 顶点：完全过调制。</div>
+      </div>
+    </div>
+
+    <!-- 第三部分 -->
+    <div class="stage" id="f3" style="margin-top:16px;">
+      <div class="part-header" style="border-color:#3fb950;">
+        <span class="part-num" style="color:#3fb950;">③</span>
+        <span class="part-title" style="color:#3fb950;">控制</span>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #3fb950;">
+        <div class="fc-title" style="color:#3fb950;">双闭环结构</div>
+        <div class="fc-eq">
+          速度环：iq_ref = PI_w(ω_ref − ω)<br>
+          电流环：vd* = PI_d(id_ref − id)<br>
+          　　　　vq* = PI_q(iq_ref − iq)
+        </div>
+        <div class="fc-note">内环（电流）快，外环（速度）慢。内环带宽 ≥ 外环 5 倍。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #3fb950;">
+        <div class="fc-title" style="color:#3fb950;">电机电气方程</div>
+        <div class="fc-eq">
+          Ld·did/dt = vd − Rs·id + ωe·Lq·iq<br>
+          Lq·diq/dt = vq − Rs·iq − ωe·Ld·id − ωe·Ke
+        </div>
+        <div class="fc-note">ωe = ω · p（电角速度 = 机械角速度 × 极对数）。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #3fb950;">
+        <div class="fc-title" style="color:#3fb950;">电机机械方程</div>
+        <div class="fc-eq">
+          Te = 1.5 · p · Ke · iq　（表贴式）<br>
+          J·dω/dt = Te − TL − B·ω
+        </div>
+        <div class="fc-note">Te：电磁转矩；TL：负载转矩；J：转动惯量；B：摩擦系数。</div>
+      </div>
+    </div>
+
+    <!-- 第四部分 -->
+    <div class="stage" id="f4" style="margin-top:16px;">
+      <div class="part-header" style="border-color:#d2a8ff;">
+        <span class="part-num" style="color:#d2a8ff;">④</span>
+        <span class="part-title" style="color:#d2a8ff;">PI 调参</span>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #d2a8ff;">
+        <div class="fc-title" style="color:#d2a8ff;">PI 控制器</div>
+        <div class="fc-eq">
+          u = Kp·e + Ki·∫e dt
+        </div>
+        <div class="fc-note">P 项对当前误差反应；I 项累积历史误差，消除静差。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #d2a8ff;">
+        <div class="fc-title" style="color:#d2a8ff;">调参经验</div>
+        <div class="fc-eq">
+          Kp ↑ → 响应快，但易超调/振荡<br>
+          Ki ↑ → 消静差，但太大振荡、太小迟钝<br>
+          先调 Kp 让响应快 → 再调 Ki 消静差
+        </div>
+        <div class="fc-note">两个环：内环快（~10 kHz），外环慢（~1 kHz）。</div>
+      </div>
+    </div>
+
+    <!-- 第五部分 -->
+    <div class="stage" id="f5" style="margin-top:16px;">
+      <div class="part-header" style="border-color:#f85149;">
+        <span class="part-num" style="color:#f85149;">⑤</span>
+        <span class="part-title" style="color:#f85149;">硬件 / 物理</span>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f85149;">
+        <div class="fc-title" style="color:#f85149;">6 个基本矢量</div>
+        <div class="fc-eq">
+          V1 = 100 → 0°<br>
+          V2 = 110 → 60°<br>
+          V3 = 010 → 120°<br>
+          V4 = 011 → 180°<br>
+          V5 = 001 → 240°<br>
+          V6 = 101 → 300°<br>
+          V0 = 000（零）  V7 = 111（零）
+        </div>
+        <div class="fc-note">1 = 上管开、下管关；0 = 上管关、下管开。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f85149;">
+        <div class="fc-title" style="color:#f85149;">母线电流（简化）</div>
+        <div class="fc-eq">
+          Idc = 1.5 · (vd·id + vq·iq) / Vdc
+        </div>
+        <div class="fc-note">从功率守恒推导：输入功率 ≈ 电磁功率 / 效率。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #f85149;">
+        <div class="fc-title" style="color:#f85149;">θ 获取 4 种方案</div>
+        <div class="fc-eq">
+          ① 增量式编码器：计脉冲（高分辨率）<br>
+          ② 绝对式编码器：直接读（最高精度）<br>
+          ③ 霍尔传感器：60° 量化<br>
+          ④ 无感观测器：反电势/电流估算
+        </div>
+        <div class="fc-note">成本 vs 精度 vs 复杂度，需权衡。</div>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <div class="stage" style="margin-top:24px; text-align:center; padding:24px;">
+      <div style="color:#3fb950; font-size:14px; font-weight:600;">🎉 教程完成</div>
+      <div style="color:#7d8590; font-size:12px; margin-top:8px; line-height:1.8;">
+        感谢学习 FOC 可视化教程！<br>
+        5 大部分 · 25 个模块 · 从坐标变换到硬件系统
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>公式汇总：</b>这是整个 FOC 教程的公式索引，涵盖 5 大部分的核心公式。<br>
+  学习时：遇到不熟悉的公式，可以回到对应的页面（01~24）看详细推导和动画演示。<br>
+  复习时：这一页是最好的速查手册。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+// 锚点平滑滚动
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.onclick = e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+});
+</script>
+</body>
+</html>

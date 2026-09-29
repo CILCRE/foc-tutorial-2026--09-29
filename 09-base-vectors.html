@@ -1,0 +1,345 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>09 · 6 个基本矢量 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .state-table { width:100%; border-collapse:collapse; font-family:monospace; font-size:11px; }
+  .state-table th, .state-table td { padding:4px 8px; text-align:center; border-bottom:1px solid #21262d; }
+  .state-table th { color:#7d8590; font-weight:normal; }
+  .state-table td.on { color:#3fb950; font-weight:bold; }
+  .state-table td.off { color:#484f58; }
+  .state-table tr.highlight td { background:#1f6feb22; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>6 个基本矢量</h3>
+
+    <div style="background:#f0b42922;border-left:3px solid #f0b429;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f0b429;">第二部分 · SVPWM</b><br>
+      逆变器的 6 个有效状态
+    </div>
+
+    <div class="section-title">选择矢量 <span id="v-cur">V1</span></div>
+    <div class="switch-group" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="v-btn on" data-v="1" style="flex:1;min-width:60px;padding:6px 8px;background:#1f6feb;color:#fff;border:1px solid #1f6feb;border-radius:6px;font-size:12px;cursor:pointer;">V1</button>
+      <button class="v-btn" data-v="2" style="flex:1;min-width:60px;padding:6px 8px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">V2</button>
+      <button class="v-btn" data-v="3" style="flex:1;min-width:60px;padding:6px 8px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">V3</button>
+      <button class="v-btn" data-v="4" style="flex:1;min-width:60px;padding:6px 8px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">V4</button>
+      <button class="v-btn" data-v="5" style="flex:1;min-width:60px;padding:6px 8px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">V5</button>
+      <button class="v-btn" data-v="6" style="flex:1;min-width:60px;padding:6px 8px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">V6</button>
+    </div>
+
+    <div class="section-title">当前状态</div>
+    <table class="state-table" id="state-table">
+      <thead>
+        <tr><th>相</th><th>上管</th><th>下管</th><th>桥臂输出</th></tr>
+      </thead>
+      <tbody>
+        <tr id="row-a"><td>A</td><td id="cell-a-up" class="on">1</td><td id="cell-a-dn" class="off">0</td><td>+Vdc/2</td></tr>
+        <tr id="row-b"><td>B</td><td id="cell-b-up" class="off">0</td><td id="cell-b-dn" class="on">1</td><td>−Vdc/2</td></tr>
+        <tr id="row-c"><td>C</td><td id="cell-c-up" class="off">0</td><td id="cell-c-dn" class="on">1</td><td>−Vdc/2</td></tr>
+      </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top:16px;">矢量方向</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#7d8590;">方向</span><span id="v-angle" style="color:#f0b429;">0°</span></div>
+      <div class="row"><span style="color:#7d8590;">幅值</span><span id="v-mag" style="color:#f0b429;">2/3·Vdc</span></div>
+      <div class="row"><span style="color:#7d8590;">开关状态</span><span id="v-bits" style="color:#3fb950;">100</span></div>
+    </div>
+
+    <div class="section-title">6 个基本矢量</div>
+    <div class="info-box" style="line-height:2;font-size:11px;">
+      <div><span style="color:#f85149;">V1</span> = 100 → 0°</div>
+      <div><span style="color:#f85149;">V2</span> = 110 → 60°</div>
+      <div><span style="color:#f85149;">V3</span> = 010 → 120°</div>
+      <div><span style="color:#f85149;">V4</span> = 011 → 180°</div>
+      <div><span style="color:#f85149;">V5</span> = 001 → 240°</div>
+      <div><span style="color:#f85149;">V6</span> = 101 → 300°</div>
+      <div style="margin-top:6px;color:#7d8590;">V0 = 000（零矢量）</div>
+      <div style="color:#7d8590;">V7 = 111（零矢量）</div>
+    </div>
+
+    <div class="hint">
+      逆变器只有 6 个"有效"开关状态——每个状态对应一个固定方向的电压矢量。<br>
+      这 6 个矢量组成一个<b>正六边形</b>，每个顶点就是一个基本矢量。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="560"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>6 个基本矢量：</b>逆变器有 6 个 MOSFET，每个桥臂（A/B/C）上下管互补——所以有效开关状态只有
+  <b>2³ = 8 种</b>：6 个非零状态（V1~V6）+ 2 个零状态（V0/V7）。<br>
+  每个非零状态对应一个固定方向的<b>电压矢量</b>，幅值 = <b>2/3·Vdc</b>（对于星形接法的电机）。
+  这 6 个矢量正好组成一个正六边形，每个顶点相隔 60°。<br>
+  <b>关键</b>：SVPWM 就是"用这 6 个基本矢量 + 零矢量，合成任意方向的 Vref"。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+// 6 个基本矢量
+const BASE_VECTORS = [
+  { id: 1, angDeg:   0, bits: '100', a: 1, b: 0, c: 0 },
+  { id: 2, angDeg:  60, bits: '110', a: 1, b: 1, c: 0 },
+  { id: 3, angDeg: 120, bits: '010', a: 0, b: 1, c: 0 },
+  { id: 4, angDeg: 180, bits: '011', a: 0, b: 1, c: 1 },
+  { id: 5, angDeg: 240, bits: '001', a: 0, b: 0, c: 1 },
+  { id: 6, angDeg: 300, bits: '101', a: 1, b: 0, c: 1 },
+];
+
+const state = {
+  curV: 1,
+  Vdc: 1.0,
+};
+
+const $ = id => document.getElementById(id);
+
+// 切换矢量
+document.querySelectorAll('.v-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.v-btn').forEach(b => {
+      b.classList.remove('on');
+      b.style.background = '#21262d';
+      b.style.color = '#7d8590';
+      b.style.borderColor = '#30363d';
+    });
+    btn.classList.add('on');
+    btn.style.background = '#1f6feb';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#1f6feb';
+    state.curV = +btn.dataset.v;
+    updateUI();
+    draw();
+  };
+});
+
+// 更新 UI
+function updateUI() {
+  const v = BASE_VECTORS.find(b => b.id === state.curV);
+  if (!v) return;
+
+  $('v-cur').textContent = 'V' + v.id;
+  $('v-angle').textContent = v.angDeg + '°';
+  $('v-mag').textContent = (2/3 * state.Vdc).toFixed(3) + '·Vdc';
+  $('v-bits').textContent = v.bits;
+
+  // 状态表
+  const setCell = (cellId, on) => {
+    const el = $(cellId);
+    el.textContent = on ? '1' : '0';
+    el.className = on ? 'on' : 'off';
+  };
+  setCell('cell-a-up', v.a === 1);
+  setCell('cell-a-dn', v.a === 0);
+  setCell('cell-b-up', v.b === 1);
+  setCell('cell-b-dn', v.b === 0);
+  setCell('cell-c-up', v.c === 1);
+  setCell('cell-c-dn', v.c === 0);
+
+  // 桥臂输出
+  const rowA = $('row-a').children[3];
+  const rowB = $('row-b').children[3];
+  const rowC = $('row-c').children[3];
+  rowA.textContent = v.a === 1 ? '+Vdc/2' : '−Vdc/2';
+  rowB.textContent = v.b === 1 ? '+Vdc/2' : '−Vdc/2';
+  rowC.textContent = v.c === 1 ? '+Vdc/2' : '−Vdc/2';
+}
+
+// ===== 绘制 =====
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function draw() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  // 左：六边形；右：逆变器原理图
+  const leftW = W * 0.55;
+  const cxHex = leftW / 2, cyHex = H / 2;
+  const rHex = Math.min(leftW, H) * 0.36;
+
+  drawHexagon(cxHex, cyHex, rHex);
+
+  // 右：逆变器原理图
+  const cxInv = leftW + (W - leftW) / 2;
+  const cyInv = H / 2;
+  drawInverter(cxInv, cyInv, W - leftW, H);
+}
+
+// ===== 六边形 =====
+function drawHexagon(cx, cy, r) {
+  // 六边形轮廓
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  BASE_VECTORS.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.closePath(); ctx.stroke();
+
+  // 6 个基本矢量
+  BASE_VECTORS.forEach(v => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    const isActive = (v.id === state.curV);
+    const color = isActive ? '#f0b429' : '#484f58';
+    const width = isActive ? 3.5 : 2;
+
+    // 线
+    ctx.strokeStyle = color; ctx.lineWidth = width;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+
+    // 箭头
+    const ang = Math.atan2(y - cy, x - cx);
+    const hl = 8;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - hl*Math.cos(ang - 0.4), y - hl*Math.sin(ang - 0.4));
+    ctx.lineTo(x - hl*Math.cos(ang + 0.4), y - hl*Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+
+    // 标签
+    ctx.fillStyle = isActive ? '#f0b429' : '#7d8590';
+    ctx.font = isActive ? 'bold 14px sans-serif' : '12px sans-serif';
+    ctx.fillText('V' + v.id, x + 8, y + 4);
+    ctx.font = '10px monospace';
+    ctx.fillStyle = isActive ? '#f0b429' : '#484f58';
+    ctx.fillText(v.bits, x - 6, y - 8);
+  });
+
+  // 零矢量（原点）
+  ctx.fillStyle = '#7d8590';
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2*Math.PI); ctx.fill();
+  ctx.font = '10px sans-serif';
+  ctx.fillText('V0/V7', cx + 6, cy + 14);
+
+  // 标题
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('6 个基本矢量（六边形顶点）', 12, 22);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#7d8590';
+  ctx.fillText('每个顶点 = 一个开关状态', 12, 40);
+}
+
+// ===== 逆变器原理图 =====
+function drawInverter(cx, cy, W, H) {
+  const v = BASE_VECTORS.find(b => b.id === state.curV);
+  if (!v) return;
+
+  const boxW = 180, boxH = 240;
+  const bx = cx - boxW / 2;
+  const by = cy - boxH / 2 + 10;
+
+  // 标题
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('逆变器 (V' + v.id + ')', cx, by - 10);
+  ctx.textAlign = 'start';
+
+  // 三个桥臂
+  const armX = [bx + 30, bx + boxW/2, bx + boxW - 30];
+  const armNames = ['A', 'B', 'C'];
+  const armStates = [v.a, v.b, v.c];
+  const armColors = ['#f85149', '#3fb950', '#d29922'];
+
+  armX.forEach((ax, i) => {
+    const name = armNames[i];
+    const upperOn = (armStates[i] === 1);
+    const color = armColors[i];
+
+    // 上管
+    drawMosfet(ax, by + 40, upperOn, color, name + '↑');
+    // 下管
+    drawMosfet(ax, by + 160, !upperOn, color, name + '↓');
+    // 中点
+    const midY = by + 100;
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(ax, by + 65); ctx.lineTo(ax, by + 100); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax, by + 100); ctx.lineTo(ax, by + 135); ctx.stroke();
+    // 相线引出
+    ctx.beginPath(); ctx.moveTo(ax, midY); ctx.lineTo(ax + 40, midY); ctx.lineTo(ax + 40, by + boxH - 10); ctx.stroke();
+    // 相标签
+    ctx.fillStyle = color; ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(name, ax, midY - 8);
+    ctx.textAlign = 'start';
+  });
+
+  // 母线
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(bx + 10, by + 20); ctx.lineTo(bx + boxW - 10, by + 20); ctx.stroke();
+  ctx.fillStyle = '#f85149'; ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('+Vdc/2', cx, by + 14);
+  ctx.textAlign = 'start';
+
+  ctx.strokeStyle = '#7d8590';
+  ctx.beginPath(); ctx.moveTo(bx + 10, by + boxH - 30); ctx.lineTo(bx + boxW - 10, by + boxH - 30); ctx.stroke();
+  ctx.fillStyle = '#7d8590'; ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('−Vdc/2', cx, by + boxH - 16);
+  ctx.textAlign = 'start';
+}
+
+function drawMosfet(x, y, on, color, label) {
+  const w = 30, h = 30;
+  ctx.fillStyle = on ? color + '55' : '#21262d';
+  ctx.strokeStyle = on ? color : '#484f58';
+  ctx.lineWidth = on ? 2 : 1;
+  ctx.fillRect(x - w/2, y, w, h);
+  ctx.strokeRect(x - w/2, y, w, h);
+  ctx.fillStyle = on ? color : '#484f58';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, x, y + h/2 + 4);
+  ctx.textAlign = 'start';
+}
+
+window.addEventListener('load', () => { updateUI(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+updateUI();
+draw();
+</script>
+</body>
+</html>

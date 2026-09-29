@@ -1,0 +1,348 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>05 · 逆 Park 变换 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.8; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 10px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div style="background:#58a6ff22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">第一部分 · 坐标变换</b><br>
+      d-q → α-β（逆运算）
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="2" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">d 轴电压 vd <span id="v-vd">0.30</span></div>
+    <input type="range" id="s-vd" min="-1" max="1" step="0.01" value="0.3" style="width:100%;">
+
+    <div class="section-title">q 轴电压 vq <span id="v-vq">0.60</span></div>
+    <input type="range" id="s-vq" min="-1" max="1" step="0.01" value="0.6" style="width:100%;">
+
+    <div class="section-title">电频率 f <span id="v-f">1.00 Hz</span></div>
+    <input type="range" id="s-f" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#3fb950;">vd</span><span id="v-vd-disp">0.300</span></div>
+      <div class="row"><span style="color:#d29922;">vq</span><span id="v-vq-disp">0.600</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#58a6ff;">vα</span><span id="v-valpha">0.000</span></div>
+      <div class="row"><span style="color:#d2a8ff;">vβ</span><span id="v-vbeta">0.000</span></div>
+    </div>
+
+    <div class="section-title">变换公式</div>
+    <div class="info-box" style="line-height:2;">
+      <div style="color:#58a6ff;">vα = vd·cosθ − vq·sinθ</div>
+      <div style="color:#d2a8ff;">vβ = vd·sinθ + vq·cosθ</div>
+      <div style="color:#7d8590;margin-top:6px;">θ = 转子电角度 = 2πft</div>
+    </div>
+
+    <div class="hint">
+      <b style="color:#d2a8ff;">逆 Park：</b>把 PI 算出来的 d-q 电压指令，转回静止的 α-β 坐标。<br>
+      它是 Park 的逆运算——Park 是 α-β → d-q，逆 Park 是 d-q → α-β。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-vec" data-fit="380"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">输入 · d-q 电压指令（vd/vq 恒定）</div>
+      <canvas id="cv-wave-dq" data-fit="150"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">输出 · α-β 电压矢量（vα/vβ 旋转）</div>
+      <canvas id="cv-wave-ab" data-fit="150"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>逆 Park 变换是 Park 的<b>逆运算</b>。FOC 的电流环 PI 算出的电压指令是在 d-q 坐标系里
+  （vd*, vq*，稳态下恒定），但逆变器需要的是 α-β 坐标系里的电压矢量（vα, vβ）。
+  所以要把 d-q 转回 α-β：<span style="font-family:monospace;color:#d2a8ff;">vα = vd·cosθ − vq·sinθ，vβ = vd·sinθ + vq·cosθ</span>。
+  <b>注意对比：</b>vd/vq 恒定 → vα/vβ 正弦摆动。这是"直流变交流"的反过程。
+  下一步：vα/vβ 会送进 SVPWM 生成 6 路 PWM。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+const state = { t: 0, vd: 0.3, vq: 0.6, f: 1, speed: 0.5, playing: false };
+
+const $ = id => document.getElementById(id);
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-vd').oninput = e => { state.vd = +e.target.value; $('v-vd').textContent = state.vd.toFixed(2); $('v-vd-disp').textContent = state.vd.toFixed(3); draw(); };
+$('s-vq').oninput = e => { state.vq = +e.target.value; $('v-vq').textContent = state.vq.toFixed(2); $('v-vq-disp').textContent = state.vq.toFixed(3); draw(); };
+$('s-f').oninput = e => { state.f = +e.target.value; $('v-f').textContent = state.f.toFixed(2)+' Hz'; syncTimeRange(); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+function waveTimeMax(f) { return Math.max(1, 2/f); }
+function syncTimeRange() {
+  const tMax = waveTimeMax(state.f);
+  $('s-t').max = tMax;
+  if (state.t > tMax) state.t = tMax;
+}
+
+function computeInv(t) {
+  const th = 2 * Math.PI * state.f * t;
+  const c = Math.cos(th), s = Math.sin(th);
+  const valpha = state.vd * c - state.vq * s;
+  const vbeta  = state.vd * s + state.vq * c;
+  return { th, valpha, vbeta };
+}
+
+const cvV = $('cv-vec'), ctxV = cvV.getContext('2d');
+const cvWD = $('cv-wave-dq'), ctxWD = cvWD.getContext('2d');
+const cvWA = $('cv-wave-ab'), ctxWA = cvWA.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 矢量图 =====
+function drawVectors() {
+  const W = cvV.clientWidth, H = cvV.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxV.clearRect(0, 0, W, H);
+
+  const gap = 40;
+  const halfW = (W - gap) / 2;
+  const cxA = halfW / 2, cyA = H / 2;
+  const cxB = halfW + gap + halfW / 2, cyB = H / 2;
+  const scale = Math.min(halfW, H) * 0.30;
+
+  const { valpha, vbeta, th } = computeInv(state.t);
+
+  // 左：d-q（输入）
+  drawCircleGrid(ctxV, cxA, cyA, scale);
+  ctxV.strokeStyle = '#3fb950'; ctxV.lineWidth = 2;
+  ctxV.beginPath(); ctxV.moveTo(cxA - scale*1.5, cyA); ctxV.lineTo(cxA + scale*1.5, cyA); ctxV.stroke();
+  ctxV.strokeStyle = '#d29922';
+  ctxV.beginPath(); ctxV.moveTo(cxA, cyA - scale*1.5); ctxV.lineTo(cxA, cyA + scale*1.5); ctxV.stroke();
+  ctxV.fillStyle = '#3fb950'; ctxV.font = 'bold 13px sans-serif';
+  ctxV.fillText('d', cxA + scale*1.55 + 4, cyA + 4);
+  ctxV.fillStyle = '#d29922';
+  ctxV.fillText('q', cxA + 4, cyA - scale*1.55 - 4);
+
+  arrow(ctxV, cxA, cyA, cxA + state.vd*scale, cyA, '#3fb950', 2.5, 8);
+  arrow(ctxV, cxA, cyA, cxA, cyA - state.vq*scale, '#d29922', 2.5, 8);
+  arrow(ctxV, cxA, cyA, cxA + state.vd*scale, cyA - state.vq*scale, '#58a6ff', 3.5, 11);
+
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('d-q 输入（恒定）', cxA - 65, 20);
+
+  // 中间箭头
+  const arrowX = halfW + gap/2;
+  ctxV.strokeStyle = '#d2a8ff'; ctxV.lineWidth = 2;
+  ctxV.beginPath(); ctxV.moveTo(arrowX - 12, H/2); ctxV.lineTo(arrowX + 12, H/2); ctxV.stroke();
+  ctxV.beginPath();
+  ctxV.moveTo(arrowX + 12, H/2);
+  ctxV.lineTo(arrowX + 4, H/2 - 5);
+  ctxV.lineTo(arrowX + 4, H/2 + 5);
+  ctxV.closePath(); ctxV.fillStyle = '#d2a8ff'; ctxV.fill();
+  ctxV.font = '11px sans-serif'; ctxV.fillStyle = '#d2a8ff';
+  ctxV.fillText('逆 Park', arrowX - 22, H/2 - 12);
+
+  // 右：α-β（输出）+ d/q 轴 + 夹角弧
+  drawCircleGrid(ctxV, cxB, cyB, scale);
+  ctxV.strokeStyle = '#30363d';
+  ctxV.beginPath(); ctxV.moveTo(cxB - halfW*0.45, cyB); ctxV.lineTo(cxB + halfW*0.45, cyB); ctxV.stroke();
+  ctxV.beginPath(); ctxV.moveTo(cxB, cyB - H*0.4); ctxV.lineTo(cxB, cyB + H*0.4); ctxV.stroke();
+  ctxV.fillStyle = '#58a6ff'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('α', cxB + scale*1.7 + 4, cyB + 4);
+  ctxV.fillText('β', cxB + 4, cyB - scale*1.7 - 4);
+
+  // d 轴（绿）
+  ctxV.strokeStyle = '#3fb950'; ctxV.lineWidth = 2;
+  ctxV.beginPath();
+  ctxV.moveTo(cxB - Math.cos(th)*scale*1.4, cyB + Math.sin(th)*scale*1.4);
+  ctxV.lineTo(cxB + Math.cos(th)*scale*1.4, cyB - Math.sin(th)*scale*1.4);
+  ctxV.stroke();
+  ctxV.fillStyle = '#3fb950'; ctxV.font = 'bold 13px sans-serif';
+  ctxV.fillText('d', cxB + Math.cos(th)*scale*1.5 - 4, cyB - Math.sin(th)*scale*1.5 + 4);
+
+  // q 轴（黄）
+  const qHatX = -Math.sin(th), qHatY = Math.cos(th);
+  ctxV.strokeStyle = '#d29922'; ctxV.lineWidth = 2;
+  ctxV.beginPath();
+  ctxV.moveTo(cxB - qHatX*scale*1.4, cyB + qHatY*scale*1.4);
+  ctxV.lineTo(cxB + qHatX*scale*1.4, cyB - qHatY*scale*1.4);
+  ctxV.stroke();
+  ctxV.fillStyle = '#d29922'; ctxV.font = 'bold 13px sans-serif';
+  ctxV.fillText('q', cxB + qHatX*scale*1.5 - 4, cyB - qHatY*scale*1.5 + 4);
+
+  // 蓝色矢量
+  arrow(ctxV, cxB, cyB, cxB + valpha*scale, cyB - vbeta*scale, '#58a6ff', 3.5, 11);
+
+  // 夹角弧 φ
+  const vAngle = Math.atan2(vbeta, valpha);
+  let phiAngle = vAngle - th;
+  // 归一化到 -π ~ π，避免跨界跳变
+  while (phiAngle > Math.PI) phiAngle -= 2 * Math.PI;
+  while (phiAngle < -Math.PI) phiAngle += 2 * Math.PI;
+  const arcR = scale * 0.55;
+  ctxV.strokeStyle = '#d2a8ff'; ctxV.lineWidth = 2;
+  ctxV.beginPath();
+  ctxV.arc(cxB, cyB, arcR, -th, -vAngle, true);
+  ctxV.stroke();
+  const midAng = -(th + phiAngle / 2);
+  ctxV.fillStyle = '#d2a8ff'; ctxV.font = 'bold 12px sans-serif';
+  ctxV.fillText('φ', cxB + Math.cos(midAng) * (arcR + 12) - 4, cyB + Math.sin(midAng) * (arcR + 12) + 4);
+
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('α-β 输出（旋转）', cxB - 65, 20);
+  ctxV.font = '10px sans-serif';
+  ctxV.fillStyle = '#d2a8ff';
+  ctxV.fillText('φ 恒定', cxB - 20, H - 8);
+}
+function drawCircleGrid(ctx, cx, cy, scale) {
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let r = 1; r <= 4; r++) {
+    ctx.beginPath(); ctx.arc(cx, cy, scale*r/2, 0, 2*Math.PI); ctx.stroke();
+  }
+}
+
+// ===== 波形 =====
+function drawWaveCanvas(ctx, cv, curves, ampScale) {
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+  const pad = 30, midY = H/2;
+  const tMax = waveTimeMax(state.f);
+
+  ctx.strokeStyle = '#30363d';
+  ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(W-pad, midY); ctx.stroke();
+
+  ctx.fillStyle = '#7d8590'; ctx.font = '10px sans-serif';
+  for (let k = 0; k <= 4; k++) {
+    const x = pad + (W-2*pad) * k/4;
+    ctx.fillText((k*tMax/4).toFixed(2)+'s', x-14, H-6);
+  }
+
+  const xNow = pad + (W-2*pad) * (state.t / tMax);
+  const amp = (H/2 - 20) * (ampScale || 1);
+
+  curves.forEach(cur => {
+    ctx.strokeStyle = cur.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let px = 0; px <= W-2*pad; px++) {
+      const tt = (px / (W-2*pad)) * tMax;
+      const val = cur.fn(tt);
+      const x = pad + px, y = midY - val * amp;
+      if (px === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  curves.forEach(cur => {
+    const val = cur.fn(state.t);
+    const y = midY - val * amp;
+    ctx.fillStyle = cur.color;
+    ctx.beginPath(); ctx.arc(xNow, y, 4, 0, 2*Math.PI); ctx.fill();
+  });
+
+  ctx.strokeStyle = '#58a6ff'; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xNow, 6); ctx.lineTo(xNow, H-6); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = '11px sans-serif';
+  let lx = pad + 6;
+  curves.forEach(cur => {
+    ctx.fillStyle = cur.color;
+    ctx.fillText(cur.label, lx, 14);
+    lx += 40;
+  });
+}
+
+function drawWaveDQ() {
+  // 输入：vd/vq 恒定
+  const curves = [
+    { color: '#3fb950', label: 'vd', fn: () => state.vd },
+    { color: '#d29922', label: 'vq', fn: () => state.vq },
+  ];
+  drawWaveCanvas(ctxWD, cvWD, curves, 1);
+}
+
+function drawWaveAB() {
+  const curves = [
+    { color: '#58a6ff', label: 'vα', fn: t => computeInv(t).valpha },
+    { color: '#d2a8ff', label: 'vβ', fn: t => computeInv(t).vbeta },
+  ];
+  drawWaveCanvas(ctxWA, cvWA, curves, 1);
+}
+
+function draw() { drawVectors(); drawWaveDQ(); drawWaveAB(); }
+
+window.addEventListener('load', () => { syncTimeRange(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = waveTimeMax(state.f);
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+
+  const { valpha, vbeta } = computeInv(state.t);
+  $('v-valpha').textContent = valpha.toFixed(3);
+  $('v-vbeta').textContent = vbeta.toFixed(3);
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+syncTimeRange();
+draw();
+</script>
+</body>
+</html>

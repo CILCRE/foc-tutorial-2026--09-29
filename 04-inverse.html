@@ -1,0 +1,962 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>04 · 逆变换 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #30363d; }
+  .tab { padding: 8px 16px; background: transparent; color: #7d8590; border: none; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; font-size: 14px; }
+  .tab:hover { color: #e6edf3; background: transparent; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; background: transparent; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 10px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.6; margin-top: 6px; }
+  #auto-detail { overflow: auto; max-height: 220px; }
+  .freeze-btn { width: 100%; padding: 6px; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 12px; background: #21262d; color: #c9d1d9; margin-top: 8px; }
+  .freeze-btn.on { background: #6e7681; color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div class="ctrl">
+      <label>时间 t <span id="v-t">0.00 s</span></label>
+      <input type="range" id="s-t" min="0" max="2" step="0.001" value="0">
+    </div>
+
+    <div class="section-title">vd / vq 控制</div>
+    <div class="switch-group">
+      <button id="btn-manual" class="on">手动</button>
+      <button id="btn-auto">自动</button>
+    </div>
+
+    <div id="manual-group">
+      <div class="ctrl">
+        <label>d 轴电压 vd <span id="v-vd">0.30</span></label>
+        <input type="range" id="s-vd" min="-1" max="1" step="0.01" value="0.3">
+      </div>
+      <div class="ctrl">
+        <label>q 轴电压 vq <span id="v-vq">0.60</span></label>
+        <input type="range" id="s-vq" min="-1" max="1" step="0.01" value="0.6">
+      </div>
+    </div>
+
+    <div id="auto-group" style="display:none;">
+      <div class="section-title">自动变化模式</div>
+      <div class="switch-group">
+        <button class="auto-mode-btn on" data-mode="a">a</button>
+        <button class="auto-mode-btn" data-mode="b">b</button>
+        <button class="auto-mode-btn" data-mode="c">c</button>
+        <button class="auto-mode-btn" data-mode="d">d</button>
+      </div>
+      <div class="hint" id="auto-hint" style="color:#58a6ff;margin-top:8px;">a: vd 恒定，vq 正弦</div>
+      <div id="auto-detail" style="margin-top:10px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;font-size:11px;color:#c9d1d9;line-height:1.7;"></div>
+      <button id="btn-freeze" class="freeze-btn">⏸ 冻结 vd/vq</button>
+    </div>
+
+    <div class="ctrl" style="margin-top:16px;">
+      <label>电频率 f <span id="v-f">1.00 Hz</span></label>
+      <input type="range" id="s-f" min="0.1" max="3" step="0.05" value="1">
+    </div>
+
+    <div class="ctrl">
+      <label>母线电压 Vdc <span id="v-vdc">1.00</span></label>
+      <input type="range" id="s-vdc" min="0.5" max="2" step="0.05" value="1">
+    </div>
+
+    <div class="ctrl">
+      <label>动画速度 <span id="v-sp">0.5×</span></label>
+      <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5">
+    </div>
+
+    <div class="ctrl">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+    </div>
+
+
+
+    <div class="hint" style="margin-top:20px;">
+      vα = vd·cosθ − vq·sinθ<br>
+      vβ = vd·sinθ + vq·cosθ
+    </div>
+    <div id="mode-hint" class="hint" style="margin-top:12px;color:#58a6ff;">
+      手动模式：vd/vq 固定（FOC 稳态）<br>
+      θ 随时间变化 → vα/vβ 旋转
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="tabs">
+        <button class="tab active" data-mode="inv">逆变换波形</button>
+      </div>
+      <canvas id="cv-main" data-fit="460"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;" id="wave-title">当前：三相电压指令</div>
+      <canvas id="cv-wave" data-fit="160"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>FOC 最后一步——把 <b>vd、vq</b> 通过 <b>逆 Park</b> 得到 <b>vα、vβ</b>，
+  再通过 <b>逆 Clarke</b> 得到 <b>va、vb、vc</b>。逆变器用 6 个基本开关矢量合成目标电压——这就是
+  <b>SVPWM</b>。切"SVPWM 扇区"看六边形和合成过程；切"PWM 波形"看 6 路开关信号。
+  vd/vq 支持手动和自动（4 种模式）切换，自动模式下可"冻结"以观察某一刻细节。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/svpwm.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+const state = {
+  t: 0, vd: 0.3, vq: 0.6, f: 1, Vdc: 1, speed: 0.5, playing: false,
+  mode: 'inv', depth: 'simple',
+  vdqMode: 'manual',
+  autoMode: 'a',
+  freezeVdq: false,          // ★ 12：冻结 vd/vq
+  frozenVdq: { vd: 0, vq: 0 },
+  allowOvermod: false,       // 默认关闭：不过调制
+};
+
+const $ = id => document.getElementById(id);
+const sT = $('s-t'), sVd = $('s-vd'), sVq = $('s-vq'), sF = $('s-f'), sVdc = $('s-vdc'), sSp = $('s-sp');
+
+sT.oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+sVd.oninput = e => { state.vd = +e.target.value; $('v-vd').textContent = state.vd.toFixed(2); draw(); };
+sVq.oninput = e => { state.vq = +e.target.value; $('v-vq').textContent = state.vq.toFixed(2); draw(); };
+sF.oninput = e => { state.f = +e.target.value; $('v-f').textContent = state.f.toFixed(2)+' Hz'; syncTimeRange(); draw(); };
+sVdc.oninput = e => { state.Vdc = +e.target.value; $('v-vdc').textContent = state.Vdc.toFixed(2); draw(); };
+sSp.oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+  if (state.playing) { lastT = performance.now(); loop(); }
+};
+
+// 手动/自动切换
+$('btn-manual').onclick = () => setVdqMode('manual');
+$('btn-auto').onclick = () => setVdqMode('auto');
+function setVdqMode(m) {
+  state.vdqMode = m;
+  $('btn-manual').classList.toggle('on', m === 'manual');
+  $('btn-auto').classList.toggle('on', m === 'auto');
+  $('manual-group').style.display = (m === 'manual') ? 'block' : 'none';
+  $('auto-group').style.display   = (m === 'auto')   ? 'block' : 'none';
+  if (m === 'manual') {
+    $('mode-hint').innerHTML = '手动模式：vd/vq 固定（FOC 稳态）<br>θ 随时间变化 → vα/vβ 旋转';
+    $('mode-hint').style.color = '#58a6ff';
+  } else {
+    $('mode-hint').innerHTML = '自动模式：vd/vq 随时间变化<br>观察 d-q 图里的矢量也在动';
+    $('mode-hint').style.color = '#d2a8ff';
+  }
+  draw();
+}
+
+// ★ 12：冻结按钮
+$('btn-freeze').onclick = () => {
+  state.freezeVdq = !state.freezeVdq;
+  $('btn-freeze').classList.toggle('on', state.freezeVdq);
+  $('btn-freeze').textContent = state.freezeVdq ? '▶ 解冻 vd/vq' : '⏸ 冻结 vd/vq';
+  if (state.freezeVdq) {
+    // 记录当前值
+    const { vd, vq } = FOC_SVPWM.autoVd(state.t, state.f, thetaAt(state.t), state.autoMode);
+    state.frozenVdq = { vd, vq };
+  }
+  draw();
+};
+
+// 自动模式
+const AUTO_HINTS = {
+  a: 'a: vd 恒定，vq 正弦变化',
+  b: 'b: vd 频率 f，vq 频率 f/2（拍频）',
+  c: 'c: 阶跃响应（含超调），只启动一次',
+  d: 'd: vd/vq 以 f/2 旋转（α-β 里 1 倍频）',
+};
+
+const AUTO_DETAILS = {
+  a: {
+    title: '模式 a：vd 恒定，vq 正弦',
+    lines: ['vd = 0.30（固定）', 'vq = 0.6·sin(2πft)'],
+    note: '用途：模拟 q 轴电流正弦脉动，观察转矩波动',
+    color: '#58a6ff',
+  },
+  b: {
+    title: '模式 b：vd/vq 拍频',
+    lines: ['vd = 0.6·sin(2πft)', 'vq = 0.3·sin(2π(f/2)t)'],
+    note: '用途：vd 频率是 vq 的两倍，观察 d-q 平面的拍频轨迹',
+    color: '#d2a8ff',
+  },
+  c: {
+    title: '模式 c：阶跃响应（只启动一次）',
+    lines: ['vd = 0.25（固定）', 'vq = 0.7·(1−e^(−8t))·(1+0.15·sin(12t)·e^(−5t))'],
+    note: '用途：模拟电机启动，观察 PI 整定后的阶跃响应（不再循环）',
+    color: '#3fb950',
+  },
+  d: {
+    title: '模式 d：vd/vq 旋转（半频）',
+    lines: ['vd = 0.6·cos(2π(f/2)t)', 'vq = 0.6·sin(2π(f/2)t)'],
+    note: '用途：dq 平面内画圆，逆 Park 后 α-β 里以正常 θ 速度旋转',
+    color: '#d29922',
+  },
+};
+
+function updateAutoDetail(mode) {
+  const d = AUTO_DETAILS[mode];
+  const el = $('auto-detail');
+  el.innerHTML = `
+    <div style="color:${d.color};font-weight:600;margin-bottom:6px;">${d.title}</div>
+    ${d.lines.map(l => `<div style="font-family:monospace;color:#e6edf3;">${l}</div>`).join('')}
+    <div style="color:#7d8590;margin-top:8px;">${d.note}</div>
+  `;
+}
+
+document.querySelectorAll('.auto-mode-btn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.auto-mode-btn').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    state.autoMode = b.dataset.mode;
+    $('auto-hint').textContent = AUTO_HINTS[state.autoMode];
+    updateAutoDetail(state.autoMode);
+    // 切换模式时解冻（避免用旧值）
+    if (state.freezeVdq) {
+      state.freezeVdq = false;
+      $('btn-freeze').classList.remove('on');
+      $('btn-freeze').textContent = '⏸ 冻结 vd/vq';
+    }
+    draw();
+  };
+});
+
+// 主视图标签
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.mode = tab.dataset.mode;
+    $('svpwm-depth').style.display = (state.mode === 'svpwm') ? 'block' : 'none';
+
+    // ★ 修正 8：切到 SVPWM 时只重置 vd/vq，保留过调制开关状态
+    if (state.mode === 'svpwm') {
+      // 切回手动
+      state.vdqMode = 'manual';
+      $('btn-manual').classList.add('on');
+      $('btn-auto').classList.remove('on');
+      $('manual-group').style.display = 'block';
+      $('auto-group').style.display   = 'none';
+      $('mode-hint').innerHTML = '手动模式：vd/vq 固定（FOC 稳态）<br>θ 随时间变化 → vα/vβ 旋转';
+      $('mode-hint').style.color = '#58a6ff';
+      // 解冻
+      state.freezeVdq = false;
+      $('btn-freeze').classList.remove('on');
+      $('btn-freeze').textContent = '⏸ 冻结 vd/vq';
+      // 重置 vd/vq 到安全值（但不过调制开关保持原状）
+      state.vd = 0.3;
+      state.vq = 0.3;
+      $('s-vd').value = 0.3; $('v-vd').textContent = '0.30';
+      $('s-vq').value = 0.3; $('v-vq').textContent = '0.30';
+      // allowOvermod 保持不变
+    }
+
+    draw();
+  };
+});
+
+
+
+
+
+function waveTimeMax(f) { return Math.max(1, 2 / f); }
+function syncTimeRange() {
+  const tMax = waveTimeMax(state.f);
+  sT.max = tMax;
+  if (state.t > tMax) state.t = tMax;
+}
+
+const cvMain = $('cv-main'), ctxM = cvMain.getContext('2d');
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+
+function thetaAt(t) { return 2 * Math.PI * state.f * t; }
+
+// 取 vd/vq（支持自动、冻结）
+function getVdVq(t) {
+  if (state.vdqMode === 'manual') {
+    return { vd: state.vd, vq: state.vq };
+  }
+  if (state.freezeVdq) {
+    return { ...state.frozenVdq };
+  }
+  return FOC_SVPWM.autoVd(t, state.f, thetaAt(t), state.autoMode);
+}
+
+function computeInv(t) {
+  const th = thetaAt(t);
+  const { vd, vq } = getVdVq(t);
+  const { valpha, vbeta } = FOC_SVPWM.invPark(vd, vq, th);
+  const { va, vb, vc } = FOC_SVPWM.invClarke(valpha, vbeta);
+  return { th, vd, vq, valpha, vbeta, va, vb, vc };
+}
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len * 0.3));   // ★ 38：自适应
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  ctxM.clearRect(0, 0, W, H);
+
+  if (state.mode === 'inv')        drawInverseView(W, H);
+  else if (state.mode === 'svpwm') drawSvpwmView(W, H);
+  else                             drawPwmView(W, H);
+}
+
+// --- 逆变换视图 ---
+function drawInverseView(W, H) {
+  const { vd, vq, valpha, vbeta, va, vb, vc } = computeInv(state.t);
+  const colGap = 24;
+  const colW = (W - colGap * 2) / 3;
+  const cx1 = colW/2;
+  const cx2 = colW + colGap + colW/2;
+  const cx3 = 2*(colW + colGap) + colW/2;
+  const cy = H/2;
+  // ★ 修正 13：稍微缩小半径，给标题留空间
+  const r = Math.min(colW * 0.32, H * 0.30);
+
+  // 1. d-q
+  drawCircleGrid(ctxM, cx1, cy, r*0.85);
+  drawAxis(ctxM, cx1, cy, colW, H);
+  ctxM.fillStyle = '#3fb950'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('d', cx1 + r*0.9, cy + 4);
+  ctxM.fillStyle = '#d29922';
+  ctxM.fillText('q', cx1 + 4, cy - r*0.9 - 4);
+  arrow(ctxM, cx1, cy, cx1 + vd*r*0.8, cy, '#3fb950', 2.5, 8);
+  arrow(ctxM, cx1, cy, cx1, cy - vq*r*0.8, '#d29922', 2.5, 8);
+  arrow(ctxM, cx1, cy, cx1 + vd*r*0.8, cy - vq*r*0.8, '#58a6ff', 3, 10);
+  ctxM.fillStyle = '#7d8590'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('d-q 控制指令', cx1 - colW*0.35, 20);
+  ctxM.font = '11px monospace'; ctxM.fillStyle = '#7d8590';
+  ctxM.fillText('vd = ' + vd.toFixed(2), cx1 - r, cy + r*1.25);
+  ctxM.fillText('vq = ' + vq.toFixed(2), cx1 - r, cy + r*1.25 + 14);
+
+  ctxM.textAlign = 'center';
+  if (state.vdqMode === 'manual') {
+    ctxM.fillStyle = '#58a6ff99'; ctxM.font = 'italic 11px sans-serif';
+    ctxM.fillText('（稳态：箭头不动）', cx1, cy + r*1.55);
+  } else if (state.freezeVdq) {
+    ctxM.fillStyle = '#f0b42999'; ctxM.font = 'italic 11px sans-serif';
+    ctxM.fillText('（已冻结）', cx1, cy + r*1.55);
+  } else {
+    ctxM.fillStyle = '#d2a8ff99'; ctxM.font = 'italic 11px sans-serif';
+    ctxM.fillText('（自动：箭头在动）', cx1, cy + r*1.55);
+  }
+  ctxM.textAlign = 'start';
+
+  // 中间箭头 1（★ 7：W<700 隐藏文字）
+  drawMidArrow(ctxM, colW + colGap/2, cy, W < 700 ? '' : '逆Park');
+
+  // 2. α-β
+  drawCircleGrid(ctxM, cx2, cy, r*0.85);
+  drawAxis(ctxM, cx2, cy, colW, H);
+  ctxM.fillStyle = '#58a6ff'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('α', cx2 + r*0.9, cy + 4);
+  ctxM.fillStyle = '#d2a8ff';
+  ctxM.fillText('β', cx2 + 4, cy - r*0.9 - 4);
+  arrow(ctxM, cx2, cy, cx2 + valpha*r*0.8, cy - vbeta*r*0.8, '#58a6ff', 3, 10);
+  ctxM.fillStyle = '#7d8590'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('α-β 静止坐标', cx2 - colW*0.32, 20);
+  ctxM.font = '11px monospace';
+  ctxM.fillText('vα = ' + valpha.toFixed(2), cx2 - r, cy + r*1.25);
+  ctxM.fillText('vβ = ' + vbeta.toFixed(2), cx2 - r, cy + r*1.25 + 14);
+
+  // 中间箭头 2
+  drawMidArrow(ctxM, 2*colW + colGap + colGap/2, cy, W < 700 ? '' : '逆Clarke');
+
+  // 3. a-b-c
+  drawCircleGrid(ctxM, cx3, cy, r*0.85);
+  const axes = [
+    { name: 'A', ang: 0,   color: '#f85149', v: va },
+    { name: 'B', ang: 120, color: '#3fb950', v: vb },
+    { name: 'C', ang: 240, color: '#d29922', v: vc },
+  ];
+  axes.forEach(a => {
+    const rad = D2R(a.ang);
+    ctxM.setLineDash([4,4]); ctxM.strokeStyle = a.color + '40';
+    ctxM.beginPath(); ctxM.moveTo(cx3, cy);
+    ctxM.lineTo(cx3 + Math.cos(rad)*r*1.0, cy - Math.sin(rad)*r*1.0);
+    ctxM.stroke(); ctxM.setLineDash([]);
+    ctxM.fillStyle = a.color; ctxM.font = '12px sans-serif';
+    ctxM.fillText(a.name, cx3 + Math.cos(rad)*r*1.15 - 4, cy - Math.sin(rad)*r*1.15 + 4);
+    arrow(ctxM, cx3, cy,
+      cx3 + Math.cos(rad)*a.v*r*0.8,
+      cy - Math.sin(rad)*a.v*r*0.8,
+      a.color, 2.5, 8);
+  });
+  ctxM.fillStyle = '#7d8590'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('三相电压指令', cx3 - colW*0.32, 20);
+  ctxM.font = '11px monospace';
+  ctxM.fillText('va = ' + va.toFixed(2), cx3 - r, cy + r*1.25);
+  ctxM.fillText('vb = ' + vb.toFixed(2), cx3 - r, cy + r*1.25 + 14);
+  ctxM.fillText('vc = ' + vc.toFixed(2), cx3 - r, cy + r*1.25 + 28);
+}
+
+function drawMidArrow(ctx, x, cy, label) {
+  ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x - 10, cy); ctx.lineTo(x + 10, cy); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + 10, cy);
+  ctx.lineTo(x + 2, cy - 5);
+  ctx.lineTo(x + 2, cy + 5);
+  ctx.closePath(); ctx.fillStyle = '#d2a8ff'; ctx.fill();
+  if (label) {
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#d2a8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, cy - 12);
+    ctx.textAlign = 'start';
+  }
+}
+
+function drawCircleGrid(ctx, cx, cy, r) {
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    ctx.beginPath(); ctx.arc(cx, cy, r*k/2, 0, 2*Math.PI); ctx.stroke();
+  }
+}
+function drawAxis(ctx, cx, cy, w, h) {
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - w*0.45, cy); ctx.lineTo(cx + w*0.45, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - h*0.4); ctx.lineTo(cx, cy + h*0.4); ctx.stroke();
+}
+
+// --- SVPWM 视图 ---
+function drawSvpwmView(W, H) {
+  // 略微向下偏移，避免顶部信息遮挡
+  const cx = W/2, cy = H/2 + 10;
+
+  // ★ 让六边形占满画布：取宽度和高度的较小值，留出信息面板空间
+  // 顶部信息区约 130px，左侧不占，右侧面板约 180px（标准/完整模式时）
+  const topReserve = 130;
+  const rightReserve = (state.depth === 'simple') ? 20 : 200;
+  const usableW = W - rightReserve - 40;   // 左右各留 20px
+  const usableH = H - topReserve - 40;     // 上下留边距
+  const rBase = Math.min(usableW, usableH) / 2 * 0.92;
+
+  // 六边形半径随 Vdc 缩放，但保持较大
+  const r = rBase * (0.6 + 0.4 * (state.Vdc / 2));   // Vdc=1 → 0.8*rBase，Vdc=2 → rBase
+
+  const { valpha, vbeta } = computeInv(state.t);
+
+  const base = FOC_SVPWM.BASE_VECTORS;
+
+  // 六边形
+  ctxM.strokeStyle = '#30363d'; ctxM.lineWidth = 2;
+  ctxM.beginPath();
+  base.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctxM.moveTo(x, y); else ctxM.lineTo(x, y);
+  });
+  ctxM.closePath(); ctxM.stroke();
+
+  // 六个基本矢量（★ 修正 27：标签位置根据方向调整，避免出画布）
+  base.forEach(v => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    arrow(ctxM, cx, cy, x, y, '#484f58', 2, 8);
+
+    // 根据方向决定标签偏移方向
+    const isRight = Math.cos(rad) > 0.1;
+    const isLeft  = Math.cos(rad) < -0.1;
+    const isUp    = Math.sin(rad) > 0.1;
+    const isDown  = Math.sin(rad) < -0.1;
+
+    let ox = 6, oy = 4;
+    if (isRight) ox = 6;
+    if (isLeft)  ox = -26;
+    if (isUp)    oy = -6;
+    if (isDown)  oy = 16;
+
+    ctxM.fillStyle = '#7d8590'; ctxM.font = '11px sans-serif';
+    ctxM.fillText('V' + v.id, x + ox, y + oy);
+    ctxM.fillStyle = '#484f58'; ctxM.font = '10px monospace';
+    ctxM.fillText(v.bits, x + ox, y + oy + 12);
+  });
+
+  // ★ 理想状态：如果允许过调制关闭，则把参考矢量缩放到六边形内切圆内
+  let valpha_d = valpha, vbeta_d = vbeta;
+  const vmax = state.Vdc / Math.sqrt(3);     // 六边形内切圆半径（物理值）
+  const vmag = Math.hypot(valpha, vbeta);
+  let scaled = false;
+  if (!false && vmag > vmax * 0.98) {
+    const k = vmax * 0.98 / vmag;
+    valpha_d *= k;
+    vbeta_d  *= k;
+    scaled = true;
+  }
+
+  const res = FOC_SVPWM.svpwm(valpha_d, vbeta_d, state.Vdc, 1);
+
+  // 参考矢量屏幕位置
+  const rvx = cx + valpha_d * rBase;
+  const rvy = cy - vbeta_d * rBase;
+  // 注：rBase 已包含"占满画布"的缩放
+
+  // ★ 6a：判断是否过调制
+  // 判断参考矢量是否在六边形内（用简单的六边形内判断：六边形用 6 条边）
+  function insideHexagon(x, y, r) {
+    // 六边形顶点：r·(cos(k·60°), sin(k·60°))
+    // 对 6 条边做半平面判断
+    for (let k = 0; k < 6; k++) {
+      const a1 = D2R(k * 60), a2 = D2R((k+1) * 60);
+      const x1 = Math.cos(a1) * r, y1 = Math.sin(a1) * r;
+      const x2 = Math.cos(a2) * r, y2 = Math.sin(a2) * r;
+      // 边 (x1,y1)-(x2,y2) 的外法线方向：逆时针多边形内侧
+      const nx = -(y2 - y1), ny = (x2 - x1);
+      const mx = (x1 + x2)/2, my = (y1 + y2)/2;
+      if ((x - mx) * nx + (y - my) * ny > 0) return false;
+    }
+    return true;
+  }
+  const dx = valpha_d * rBase;
+  const dy = vbeta_d * rBase;
+  // 数学坐标（y 向上）
+  const overMod = !insideHexagon(dx, dy, r);
+
+  const refColor = overMod ? '#f85149' : '#58a6ff';
+  arrow(ctxM, cx, cy, rvx, rvy, refColor, 3, 11);
+
+  // 过调制提示
+  if (overMod) {
+    ctxM.fillStyle = '#f85149'; ctxM.font = 'bold 13px sans-serif';
+    ctxM.fillText('⚠ 过调制（超出六边形）', 20, H - 20);
+  }
+
+  // 扇区高亮
+  if (res.sector >= 1 && res.sector <= 6) {
+    const nv = FOC_SVPWM.SECTOR_NEIGHBORS[res.sector];
+    const v1 = base.find(b => b.id === nv[0]);
+    const v2 = base.find(b => b.id === nv[1]);
+    if (v1 && v2) {
+      ctxM.fillStyle = 'rgba(88, 166, 255, 0.08)';
+      ctxM.beginPath();
+      ctxM.moveTo(cx, cy);
+      const r1 = D2R(v1.angDeg), r2 = D2R(v2.angDeg);
+      ctxM.lineTo(cx + Math.cos(r1)*r*1.02, cy - Math.sin(r1)*r*1.02);
+      ctxM.lineTo(cx + Math.cos(r2)*r*1.02, cy - Math.sin(r2)*r*1.02);
+      ctxM.closePath(); ctxM.fill();
+    }
+  }
+
+  // ★ 修正 39：顶部信息用两栏布局，避免重叠
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 14px sans-serif';
+  ctxM.fillText('SVPWM 空间矢量图', 20, 24);
+
+  ctxM.font = '12px sans-serif';
+  ctxM.fillStyle = overMod ? '#f85149' : '#58a6ff';
+  ctxM.fillText('扇区 ' + res.sector + (overMod ? '  (过调制)' : ''), 20, 44);
+
+  // 数值用两列排布
+  ctxM.font = '11px monospace';
+  ctxM.fillStyle = '#7d8590';
+  ctxM.fillText('vα = ' + valpha_d.toFixed(3) + (scaled ? ' *' : ''), 20, 62);
+  ctxM.fillText('vβ = ' + vbeta_d.toFixed(3) + (scaled ? ' *' : ''), 20, 78);
+  ctxM.fillText('|Vref| = ' + res.Vref.toFixed(3), 20, 94);
+  ctxM.fillText('Vdc = ' + state.Vdc.toFixed(2), 20, 110);
+  if (scaled) {
+    ctxM.fillStyle = '#d2a8ff';
+    ctxM.fillText('* 已缩放（避免过调制）', 20, 126);
+  } else {
+    ctxM.fillText('六边形边长 ≈ ' + r.toFixed(0) + 'px', 20, 126);
+  }
+
+  // 标准/完整：右侧信息
+  if (state.depth === 'std' || state.depth === 'full') {
+    const nv = FOC_SVPWM.SECTOR_NEIGHBORS[res.sector];
+    const v1 = base.find(b => b.id === nv[0]);
+    const v2 = base.find(b => b.id === nv[1]);
+    if (v1) {
+      const rad = D2R(v1.angDeg);
+      arrow(ctxM, cx, cy, cx + Math.cos(rad)*r, cy - Math.sin(rad)*r, '#3fb950', 3, 10);
+    }
+    if (v2) {
+      const rad = D2R(v2.angDeg);
+      arrow(ctxM, cx, cy, cx + Math.cos(rad)*r, cy - Math.sin(rad)*r, '#d29922', 3, 10);
+    }
+    // ★ 13：相对定位
+    const panelRight = 20;
+    const panelWidth = 170;
+    const panelX = W - panelWidth - panelRight;
+    ctxM.font = '12px monospace';
+    ctxM.fillStyle = '#3fb950';
+    ctxM.fillText('T1(V' + v1.id + ') = ' + res.T1.toFixed(3), panelX, 24);
+    ctxM.fillStyle = '#d29922';
+    ctxM.fillText('T2(V' + v2.id + ') = ' + res.T2.toFixed(3), panelX, 42);
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText('T0 = ' + res.T0.toFixed(3), panelX, 60);
+    ctxM.fillText('Ts = 1.000', panelX, 78);
+  }
+
+  if (state.depth === 'full') {
+    // ★ 13：完整模式的占空比条（相对定位）
+    const barW = 140, barH = 12;
+    const barX = W - barW - 20;
+    const barY = 110;
+    ['A', 'B', 'C'].forEach((name, idx) => {
+      const duty = [res.Ta, res.Tb, res.Tc][idx];
+      const color = ['#f85149', '#3fb950', '#d29922'][idx];
+      const y = barY + idx * 24;
+      ctxM.fillStyle = '#21262d';
+      ctxM.fillRect(barX, y, barW, barH);
+      ctxM.fillStyle = color;
+      ctxM.fillRect(barX, y, barW * duty, barH);
+      ctxM.fillStyle = '#e6edf3';
+      ctxM.font = '11px monospace';
+      ctxM.fillText(name + ': ' + (duty*100).toFixed(1) + '%', barX - 66, y + 10);
+    });
+  }
+}
+
+// --- PWM 波形视图（6 扇区网格，X + a 方案）---
+function drawPwmView(W, H) {
+  // 当前扇区（高亮用）
+  const { valpha: curA, vbeta: curB } = computeInv(state.t);
+  const curSector = FOC_SVPWM.svpwm(curA, curB, state.Vdc, 1).sector;
+
+  // 标题
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 13px sans-serif';
+  ctxM.fillText('6 个扇区的 PWM 开关波形（每图 6 路）', 20, 22);
+  ctxM.fillStyle = '#7d8590'; ctxM.font = '11px sans-serif';
+  ctxM.fillText('※ 每图使用该扇区中心角的固定参考矢量，静态展示便于对比', 20, 40);
+  ctxM.fillStyle = '#58a6ff'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('当前扇区：' + curSector + '（蓝框）', W - 150, 22);
+
+  // 网格参数：2 行 × 3 列
+  const cols = 3, rows = 2;
+  const gapX = 12, gapY = 12;
+  const padTop = 32, padBottom = 12, padLeft = 8, padRight = 8;
+  const cellW = (W - padLeft - padRight - gapX * (cols - 1)) / cols;
+  const cellH = (H - padTop - padBottom - gapY * (rows - 1)) / rows;
+
+  // 每个扇区：用该扇区的"中心角"和固定幅值算 Ta/Tb/Tc
+  // 扇区 k 的中心角 = (k-1)*60 + 30 度
+  const refMag = 0.5;   // 固定幅值
+
+  for (let sector = 1; sector <= 6; sector++) {
+    const idx = sector - 1;
+    const col = idx % 3;
+    const row = Math.floor(idx / 3);
+    const cellX = padLeft + col * (cellW + gapX);
+    const cellY = padTop + row * (cellH + gapY);
+
+    // 该扇区中心角对应的 vα vβ
+    const angDeg = (sector - 1) * 60 + 30;
+    const angRad = D2R(angDeg);
+    const vA = refMag * Math.cos(angRad);
+    const vB = refMag * Math.sin(angRad);
+    const res = FOC_SVPWM.svpwm(vA, vB, state.Vdc, 1);
+
+    // 边框（当前扇区高亮）
+    const isActive = (sector === curSector);
+    ctxM.strokeStyle = isActive ? '#58a6ff' : '#30363d';
+    ctxM.lineWidth = isActive ? 2 : 1;
+    ctxM.strokeRect(cellX, cellY, cellW, cellH);
+
+    // 扇区号（左上角）
+    ctxM.fillStyle = isActive ? '#58a6ff' : '#7d8590';
+    ctxM.font = 'bold 12px sans-serif';
+    ctxM.fillText('扇区 ' + sector, cellX + 6, cellY + 14);
+
+    // 6 路波形区域
+    const innerPadL = 30, innerPadR = 8, innerPadT = 22, innerPadB = 6;
+    const plotX = cellX + innerPadL;
+    const plotY = cellY + innerPadT;
+    const plotW = cellW - innerPadL - innerPadR;
+    const plotH = cellH - innerPadT - innerPadB;
+    const laneH = plotH / 6;
+
+    const lanes = [
+      { name: 'A↑', duty: res.Ta,        color: '#f85149' },
+      { name: 'A↓', duty: 1 - res.Ta,    color: '#7c3b36' },
+      { name: 'B↑', duty: res.Tb,        color: '#3fb950' },
+      { name: 'B↓', duty: 1 - res.Tb,    color: '#2a6b34' },
+      { name: 'C↑', duty: res.Tc,        color: '#d29922' },
+      { name: 'C↓', duty: 1 - res.Tc,    color: '#8f6a1c' },
+    ];
+
+    lanes.forEach((lane, k) => {
+      const y0 = plotY + k * laneH;
+      const midY = y0 + laneH * 0.5;
+      const highY = y0 + laneH * 0.2;
+      const lowY = y0 + laneH * 0.8;
+
+      // 基线
+      ctxM.strokeStyle = '#21262d'; ctxM.lineWidth = 1;
+      ctxM.beginPath(); ctxM.moveTo(plotX, midY); ctxM.lineTo(plotX + plotW, midY); ctxM.stroke();
+
+      // ★ 修正 26：下桥臂画成上桥臂的反相
+      const duty = lane.duty;
+      const onDur = duty * plotW;
+      // 判断是上桥臂还是下桥臂
+      const isLower = lane.name.includes('↓');
+      // 上桥臂：占空比时间居中；下桥臂：反相（占空比互补，波形翻转）
+      let startX, endX;
+      if (isLower) {
+        // 下桥臂 = 上桥臂反相，高电平时间 = 1 - duty
+        const lowDur = (1 - duty) * plotW;
+        // 反相后高电平在两端（中间是低电平）
+        // 用中心对称：低电平居中
+        const lowStart = plotX + (plotW - lowDur) / 2;
+        const lowEnd = lowStart + lowDur;
+        // 高 - 低 - 高
+        ctxM.strokeStyle = lane.color; ctxM.lineWidth = 1.5;
+        ctxM.beginPath();
+        ctxM.moveTo(plotX, highY);
+        ctxM.lineTo(lowStart, highY);
+        ctxM.lineTo(lowStart, lowY);
+        ctxM.lineTo(lowEnd, lowY);
+        ctxM.lineTo(lowEnd, highY);
+        ctxM.lineTo(plotX + plotW, highY);
+        ctxM.stroke();
+      } else {
+        // 上桥臂：高电平居中
+        startX = plotX + (plotW - onDur) / 2;
+        endX = startX + onDur;
+        ctxM.strokeStyle = lane.color; ctxM.lineWidth = 1.5;
+        ctxM.beginPath();
+        ctxM.moveTo(plotX, lowY);
+        ctxM.lineTo(startX, lowY);
+        ctxM.lineTo(startX, highY);
+        ctxM.lineTo(endX, highY);
+        ctxM.lineTo(endX, lowY);
+        ctxM.lineTo(plotX + plotW, lowY);
+        ctxM.stroke();
+      }
+
+      // ★ 修正 34：路标签字号 9→10
+      ctxM.fillStyle = lane.color;
+      ctxM.font = '10px monospace';
+      ctxM.fillText(lane.name, cellX + 3, midY + 3);
+    });
+  }
+}
+
+// --- 下方波形 ---
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 30, midY = H/2;
+  const tMax = waveTimeMax(state.f);
+
+  ctxW.strokeStyle = '#30363d';
+  ctxW.beginPath(); ctxW.moveTo(pad, midY); ctxW.lineTo(W-pad, midY); ctxW.stroke();
+
+  ctxW.fillStyle = '#7d8590'; ctxW.font = '10px sans-serif';
+  for (let k = 0; k <= 4; k++) {
+    const x = pad + (W-2*pad) * k/4;
+    ctxW.fillText((k*tMax/4).toFixed(2)+'s', x-14, H-6);
+  }
+
+  const xNow = pad + (W-2*pad) * (state.t / tMax);
+  const amp = (H/2 - 20);
+
+  let curves, title, stepMode = false;
+
+  if (state.mode === 'inv') {
+    title = '三相电压指令 va / vb / vc';
+    curves = [
+      { color: '#f85149', label: 'va', fn: t => computeInv(t).va },
+      { color: '#3fb950', label: 'vb', fn: t => computeInv(t).vb },
+      { color: '#d29922', label: 'vc', fn: t => computeInv(t).vc },
+    ];
+  } else if (state.mode === 'svpwm') {
+    title = '扇区号随时间变化（阶梯）';
+    stepMode = true;
+    curves = [
+      { color: '#58a6ff', label: '扇区', fn: t => {
+        const { valpha, vbeta } = computeInv(t);
+        return FOC_SVPWM.svpwm(valpha, vbeta, state.Vdc, 1).sector;
+      }},
+    ];
+  } else {
+    // ★ 8a：PWM 模式下三条占空比拆成独立轨道
+    title = '三相占空比 Ta / Tb / Tc（独立轨道）';
+    curves = [
+      { color: '#f85149', label: 'Ta', fn: t => {
+        const { valpha, vbeta } = computeInv(t);
+        return FOC_SVPWM.svpwm(valpha, vbeta, state.Vdc, 1).Ta;
+      }, lane: 0 },
+      { color: '#3fb950', label: 'Tb', fn: t => {
+        const { valpha, vbeta } = computeInv(t);
+        return FOC_SVPWM.svpwm(valpha, vbeta, state.Vdc, 1).Tb;
+      }, lane: 1 },
+      { color: '#d29922', label: 'Tc', fn: t => {
+        const { valpha, vbeta } = computeInv(t);
+        return FOC_SVPWM.svpwm(valpha, vbeta, state.Vdc, 1).Tc;
+      }, lane: 2 },
+    ];
+  }
+
+  document.getElementById('wave-title').textContent = '当前：' + title;
+
+  const yScale = (state.mode === 'svpwm') ? 1.5 : 1;
+
+  // ★ 8a：PWM 独立轨道
+  if (state.mode === 'pwm') {
+    const laneH = (H - 30) / 3;
+    curves.forEach((cur, idx) => {
+      const laneY0 = 15 + idx * laneH;
+      const laneMid = laneY0 + laneH * 0.5;
+      const laneAmp = laneH * 0.4;
+
+      // 轨道背景线
+      ctxW.strokeStyle = '#21262d';
+      ctxW.beginPath(); ctxW.moveTo(pad, laneMid); ctxW.lineTo(W-pad, laneMid); ctxW.stroke();
+
+      ctxW.strokeStyle = cur.color; ctxW.lineWidth = 2;
+      ctxW.beginPath();
+      for (let px = 0; px <= W-2*pad; px++) {
+        const tt = (px / (W-2*pad)) * tMax;
+        const val = cur.fn(tt) - 0.5;   // 0~1 → -0.5~0.5
+        const x = pad + px, y = laneMid - val * laneAmp * 2;
+        if (px === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+      }
+      ctxW.stroke();
+
+      // 当前点
+      const valNow = cur.fn(state.t) - 0.5;
+      const yNow = laneMid - valNow * laneAmp * 2;
+      ctxW.fillStyle = cur.color;
+      ctxW.beginPath(); ctxW.arc(xNow, yNow, 3, 0, 2*Math.PI); ctxW.fill();
+
+      // 标签
+      ctxW.fillStyle = cur.color; ctxW.font = '11px sans-serif';
+      ctxW.fillText(cur.label, 6, laneMid + 4);
+    });
+
+    // 时间游标
+    ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+    ctxW.beginPath(); ctxW.moveTo(xNow, 6); ctxW.lineTo(xNow, H-6); ctxW.stroke();
+    ctxW.setLineDash([]);
+    return;
+  }
+
+  // 其它模式：常规绘制
+  curves.forEach(cur => {
+    ctxW.strokeStyle = cur.color; ctxW.lineWidth = 2;
+    ctxW.beginPath();
+    if (stepMode) {
+      let prevY = null;
+      for (let px = 0; px <= W-2*pad; px++) {
+        const tt = (px / (W-2*pad)) * tMax;
+        const val = cur.fn(tt);
+        const x = pad + px;
+        const y = midY - val * amp * yScale * 0.5;
+        if (px === 0) { ctxW.moveTo(x, y); }
+        else if (y !== prevY) {
+          ctxW.lineTo(x, prevY);
+          ctxW.lineTo(x, y);
+        } else {
+          ctxW.lineTo(x, y);
+        }
+        prevY = y;
+      }
+    } else {
+      for (let px = 0; px <= W-2*pad; px++) {
+        const tt = (px / (W-2*pad)) * tMax;
+        const val = cur.fn(tt);
+        const x = pad + px, y = midY - val * amp * yScale;
+        if (px === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+      }
+    }
+    ctxW.stroke();
+  });
+
+  curves.forEach(cur => {
+    const val = cur.fn(state.t);
+    const y = midY - val * amp * yScale * (stepMode ? 0.5 : 1);
+    ctxW.fillStyle = cur.color;
+    ctxW.beginPath(); ctxW.arc(xNow, y, 4, 0, 2*Math.PI); ctxW.fill();
+  });
+
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, 6); ctxW.lineTo(xNow, H-6); ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  ctxW.font = '11px sans-serif';
+  let lx = pad + 6;
+  curves.forEach(cur => {
+    ctxW.fillStyle = cur.color;
+    ctxW.fillText(cur.label, lx, 14);
+    lx += 40;
+  });
+
+  // ★ 9：扇区模式 Y 轴刻度（H<120 时隐藏）
+  if (state.mode === 'svpwm' && H >= 120) {
+    ctxW.fillStyle = '#7d8590'; ctxW.font = '10px monospace';
+    for (let s = 1; s <= 6; s++) {
+      const y = midY - s * amp * yScale * 0.5;
+      ctxW.fillText(s.toString(), pad - 14, y + 4);
+      ctxW.strokeStyle = '#21262d';
+      ctxW.beginPath(); ctxW.moveTo(pad, y); ctxW.lineTo(W-pad, y); ctxW.stroke();
+    }
+  }
+}
+
+function draw() { drawMain(); drawWave(); }
+
+window.addEventListener('load', () => {
+  syncTimeRange();
+  updateAutoDetail(state.autoMode);
+  draw();
+});
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = waveTimeMax(state.f);
+  if (state.t > tMax) state.t -= tMax;
+  sT.value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  // 自动模式时刷新数值显示
+  if (state.vdqMode === 'auto' && !state.freezeVdq) {
+    const { vd, vq } = getVdVq(state.t);
+    $('v-vd').textContent = vd.toFixed(2);
+    $('v-vq').textContent = vq.toFixed(2);
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+syncTimeRange();
+updateAutoDetail(state.autoMode);
+draw();
+</script>
+</body>
+</html>

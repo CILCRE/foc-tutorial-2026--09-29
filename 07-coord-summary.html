@@ -1,0 +1,242 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>07 · 坐标变换总结 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.8; font-family:monospace; }
+  .flow-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:20px; margin-bottom:12px; overflow-x:auto; }
+  .flow-row { display:flex; align-items:center; gap:10px; white-space:nowrap; font-family:monospace; font-size:12px; margin-bottom:12px; }
+  .flow-node { border-radius:6px; padding:10px 16px; text-align:center; min-width:80px; }
+  .flow-node .name { font-weight:bold; font-size:13px; }
+  .flow-node .sub { font-size:10px; color:#7d8590; margin-top:2px; }
+  .flow-arrow { color:#7d8590; font-size:14px; }
+  .formula-card {
+    background:#161b22; border:1px solid #30363d; border-radius:6px;
+    padding:14px; margin-bottom:10px;
+  }
+  .formula-card .fc-title { font-size:13px; font-weight:600; margin-bottom:8px; }
+  .formula-card .fc-eq { font-family:monospace; font-size:12px; line-height:2; color:#c9d1d9; }
+  .formula-card .fc-note { font-size:11px; color:#7d8590; margin-top:8px; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 280px 1fr;">
+  <div class="panel">
+    <h3>坐标变换总结</h3>
+
+    <div style="background:#58a6ff22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">第一部分 · 坐标变换</b><br>
+      4 个变换的关系 & 速查表
+    </div>
+
+    <div class="section-title">目录</div>
+    <div class="info-box">
+      <div>① <a href="#f1" style="color:#58a6ff;text-decoration:none;">4 个变换全景图</a></div>
+      <div>② <a href="#f2" style="color:#58a6ff;text-decoration:none;">公式速查</a></div>
+      <div>③ <a href="#f3" style="color:#58a6ff;text-decoration:none;">用在哪</a></div>
+      <div>④ <a href="#f4" style="color:#58a6ff;text-decoration:none;">记忆口诀</a></div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">四个变换</div>
+    <div class="info-box" style="line-height:2.2;">
+      <div><span style="color:#58a6ff;">① Clarke</span>：a-b-c → α-β</div>
+      <div><span style="color:#d2a8ff;">② Park</span>：α-β → d-q</div>
+      <div><span style="color:#58a6ff;">③ 逆 Park</span>：d-q → α-β</div>
+      <div><span style="color:#d2a8ff;">④ 逆 Clarke</span>：α-β → a-b-c</div>
+    </div>
+
+    <div class="section-title">为什么只用 2 个</div>
+    <div class="hint">
+      三相电流 ia+ib+ic=0，所以 3 个量只有 2 个自由度——用 2 个正交分量（α-β）就能完全描述。
+      这就是 Clarke 把 3 变 2 的根本原因。
+    </div>
+  </div>
+
+  <div>
+    <!-- 全景图 -->
+    <div class="stage" id="f1">
+      <div class="section-title" style="margin-top:0;">① 4 个变换全景图</div>
+      <div class="flow-box">
+        <!-- 上层：正向 -->
+        <div style="color:#7d8590;font-size:11px;margin-bottom:8px;">正向变换（从电机侧 → 控制侧）</div>
+        <div class="flow-row">
+          <div class="flow-node" style="background:#f8514933;border:1px solid #f85149;">
+            <div class="name" style="color:#f85149;">a-b-c</div>
+            <div class="sub">三相电流</div>
+          </div>
+          <span class="flow-arrow">→ Clarke →</span>
+          <div class="flow-node" style="background:#58a6ff33;border:1px solid #58a6ff;">
+            <div class="name" style="color:#58a6ff;">α-β</div>
+            <div class="sub">静止两相</div>
+          </div>
+          <span class="flow-arrow">→ Park →</span>
+          <div class="flow-node" style="background:#d2a8ff33;border:1px solid #d2a8ff;">
+            <div class="name" style="color:#d2a8ff;">d-q</div>
+            <div class="sub">旋转两相</div>
+          </div>
+        </div>
+
+        <!-- 中间：控制 -->
+        <div style="text-align:center;color:#3fb950;font-size:12px;margin:16px 0;font-family:monospace;">
+          ↓ 双环 PI 控制（在 d-q 里做）
+        </div>
+
+        <!-- 下层：逆向 -->
+        <div style="color:#7d8590;font-size:11px;margin-bottom:8px;">逆向变换（从控制侧 → 逆变器）</div>
+        <div class="flow-row">
+          <div class="flow-node" style="background:#d2a8ff33;border:1px solid #d2a8ff;">
+            <div class="name" style="color:#d2a8ff;">d-q</div>
+            <div class="sub">电压指令</div>
+          </div>
+          <span class="flow-arrow">→ 逆 Park →</span>
+          <div class="flow-node" style="background:#58a6ff33;border:1px solid #58a6ff;">
+            <div class="name" style="color:#58a6ff;">α-β</div>
+            <div class="sub">电压矢量</div>
+          </div>
+          <span class="flow-arrow">→ 逆 Clarke →</span>
+          <div class="flow-node" style="background:#f8514933;border:1px solid #f85149;">
+            <div class="name" style="color:#f85149;">a-b-c</div>
+            <div class="sub">三相电压</div>
+          </div>
+        </div>
+
+        <!-- 备注 -->
+        <div style="margin-top:16px;padding-top:12px;border-top:1px dashed #30363d;font-size:11px;color:#7d8590;line-height:1.8;">
+          <div>✦ <b style="color:#f0b429;">SVPWM</b> 只需要 <b>α-β</b>，不需要逆 Clarke</div>
+          <div>✦ <b style="color:#d2a8ff;">SPWM</b> 才需要 a-b-c 三相电压</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 公式速查 -->
+    <div class="stage" id="f2" style="margin-top:16px;">
+      <div class="section-title" style="margin-top:0;">② 公式速查</div>
+
+      <div class="formula-card" style="border-left:3px solid #58a6ff;">
+        <div class="fc-title" style="color:#58a6ff;">① Clarke 变换（3→2 相，等幅值）</div>
+        <div class="fc-eq">
+          iα = ia<br>
+          iβ = (ia + 2·ib) / √3
+        </div>
+        <div class="fc-note">把三相电流投影到 α-β 平面。等幅值形式：合成矢量幅值 = 1.0·I。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #d2a8ff;">
+        <div class="fc-title" style="color:#d2a8ff;">② Park 变换（α-β → d-q）</div>
+        <div class="fc-eq">
+          id =  iα·cosθ + iβ·sinθ<br>
+          iq = −iα·sinθ + iβ·cosθ
+        </div>
+        <div class="fc-note">θ 是转子电角度（来自编码器/观测器）。旋转的 α-β 变成静止的 d-q。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #d2a8ff;">
+        <div class="fc-title" style="color:#d2a8ff;">③ 逆 Park 变换（d-q → α-β）</div>
+        <div class="fc-eq">
+          vα = vd·cosθ − vq·sinθ<br>
+          vβ = vd·sinθ + vq·cosθ
+        </div>
+        <div class="fc-note">把 PI 算出的 d-q 电压指令转回 α-β 坐标，送给 SVPWM。</div>
+      </div>
+
+      <div class="formula-card" style="border-left:3px solid #58a6ff;">
+        <div class="fc-title" style="color:#58a6ff;">④ 逆 Clarke 变换（2→3 相，等幅值）</div>
+        <div class="fc-eq">
+          va = vα<br>
+          vb = −½·vα + (√3/2)·vβ<br>
+          vc = −½·vα − (√3/2)·vβ
+        </div>
+        <div class="fc-note">把 α-β 电压矢量投影回三相。传统 SPWM 用这个。</div>
+      </div>
+    </div>
+
+    <!-- 用在哪 -->
+    <div class="stage" id="f3" style="margin-top:16px;">
+      <div class="section-title" style="margin-top:0;">③ 每个变换"用在哪"</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:14px;">
+          <div style="color:#58a6ff;font-weight:bold;font-size:13px;margin-bottom:8px;">Clarke</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.8;">
+            <b style="color:#7d8590;">输入</b>：ia, ib, ic（电流采样）<br>
+            <b style="color:#7d8590;">输出</b>：iα, iβ<br>
+            <b style="color:#7d8590;">在哪</b>：电流环的反馈通道<br>
+            <b style="color:#7d8590;">频率</b>：与 PWM 同步（~10-20 kHz）
+          </div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:14px;">
+          <div style="color:#d2a8ff;font-weight:bold;font-size:13px;margin-bottom:8px;">Park</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.8;">
+            <b style="color:#7d8590;">输入</b>：iα, iβ + θ<br>
+            <b style="color:#7d8590;">输出</b>：id, iq<br>
+            <b style="color:#7d8590;">在哪</b>：电流环的反馈通道<br>
+            <b style="color:#7d8590;">频率</b>：与 PWM 同步
+          </div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:14px;">
+          <div style="color:#d2a8ff;font-weight:bold;font-size:13px;margin-bottom:8px;">逆 Park</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.8;">
+            <b style="color:#7d8590;">输入</b>：vd*, vq* + θ<br>
+            <b style="color:#7d8590;">输出</b>：vα, vβ<br>
+            <b style="color:#7d8590;">在哪</b>：电流环的输出通道<br>
+            <b style="color:#7d8590;">频率</b>：与 PWM 同步
+          </div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:14px;">
+          <div style="color:#58a6ff;font-weight:bold;font-size:13px;margin-bottom:8px;">逆 Clarke</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.8;">
+            <b style="color:#7d8590;">输入</b>：vα, vβ<br>
+            <b style="color:#7d8590;">输出</b>：va, vb, vc<br>
+            <b style="color:#7d8590;">在哪</b>：SPWM 用；SVPWM 不用<br>
+            <b style="color:#7d8590;">频率</b>：与 PWM 同步
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 记忆口诀 -->
+    <div class="stage" id="f4" style="margin-top:16px;">
+      <div class="section-title" style="margin-top:0;">④ 记忆口诀</div>
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:20px;font-size:13px;line-height:2.2;color:#c9d1d9;">
+        <div><b style="color:#58a6ff;">Clarke</b>：<b>3 变 2</b>（相数减少）</div>
+        <div><b style="color:#d2a8ff;">Park</b>：<b>转坐标</b>（静止 → 旋转）</div>
+        <div><b style="color:#d2a8ff;">逆 Park</b>：<b>转回来</b>（旋转 → 静止）</div>
+        <div><b style="color:#58a6ff;">逆 Clarke</b>：<b>2 变 3</b>（相数恢复）</div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #30363d;color:#f0b429;">
+          ⚡ <b>口诀</b>：<br>
+          <span style="font-family:monospace;">Clarke 减相 → Park 转轴 → PI 在 d-q 里算 → 逆 Park 转回 → 逆 Clarke 复相</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>本部分小结：</b>坐标变换是 FOC 的数学基础。通过 4 个变换（Clarke / Park / 逆 Park / 逆 Clarke），
+  把三相交流电机的控制问题，转化为"在旋转 d-q 坐标系里控制两个直流量"的问题——
+  这就是 FOC 能用简单 PI 调节器精确控制电流的根本原因。
+  <b>下一步</b>：进入第二部分 SVPWM，看怎么把 vα/vβ 变成 6 路 PWM。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+// 锚点平滑滚动
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.onclick = e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,673 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>08 · 综合演示 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .overview-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    .overview-grid { grid-template-columns: 1fr; }
+  }
+  .block-section { padding: 16px; }
+  .signal-section { padding: 12px; }
+  .value-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 16px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    font-family: monospace;
+    line-height: 1.9;
+  }
+  .value-grid .k { color: #7d8590; }
+  .value-grid .v { color: #e6edf3; text-align: right; }
+  .value-grid .accent { color: #58a6ff; }
+  .value-grid .green { color: #3fb950; }
+  .value-grid .yellow { color: #d29922; }
+  .value-grid .red { color: #f85149; }
+  .title-sm { font-size: 12px; color: #7d8590; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 280px 1fr;">
+  <div class="panel">
+    <h3>综合演示</h3>
+
+    <div style="background:#1f6feb22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">FOC 双闭环系统</b><br>
+      速度环 → 电流环 → 逆变换 → SVPWM → 电机<br>
+      反馈：ω 和 id/iq 实时回到控制器
+    </div>
+
+    <div class="section-title">给定转速 ω_ref <span id="v-wref">15.00</span></div>
+    <input type="range" id="s-wref" min="0" max="30" step="0.5" value="15" style="width:100%;">
+
+    <div class="section-title">负载转矩 TL <span id="v-tl">0.00</span></div>
+    <input type="range" id="s-tl" min="0" max="0.5" step="0.01" value="0" style="width:100%;">
+    <div class="switch-group" style="margin-top:6px;">
+      <button id="btn-load-up">+ 加负载</button>
+      <button id="btn-load-zero">归零</button>
+    </div>
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 开始仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">核心公式</div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;font-size:11px;line-height:2;font-family:monospace;">
+      <div style="color:#d2a8ff;">Te = 1.5·p·Ke·iq</div>
+      <div style="color:#d2a8ff;">J·dω/dt = Te − TL − B·ω</div>
+      <div style="color:#d2a8ff;">iq_ref = PI_w(ω_ref − ω)</div>
+      <div style="color:#d2a8ff;">vd* = PI_d(id_ref − id)</div>
+      <div style="color:#d2a8ff;">vq* = PI_q(iq_ref − iq)</div>
+    </div>
+
+    <div class="hint" style="margin-top:16px;">
+      <b style="color:#58a6ff;">提示：</b><br>
+      • 空格 = 播放/暂停<br>
+      • R = 重置<br>
+      • ← → = 时间微调
+    </div>
+  </div>
+
+  <div>
+    <!-- ★ 居中大标题 -->
+    <div style="text-align:center; padding: 8px 0 16px;">
+      <h1 style="font-size: 28px; color: #e6edf3; margin: 0; letter-spacing: 2px; font-weight: 700;">
+        FOC 双闭环 · 综合演示
+      </h1>
+      <p style="color: #7d8590; font-size: 13px; margin-top: 8px; letter-spacing: 0.5px;">
+        一屏看全：信号流高亮 · 实时波形 · d-q 电流矢量 · 完整数值
+      </p>
+    </div>
+
+    <div class="stage block-section">
+      <div class="title-sm">控制框图（实时高亮信号流）</div>
+      <canvas id="cv-block" data-fit="180"></canvas>
+    </div>
+
+    <div class="overview-grid" style="margin-top:16px;">
+      <div class="stage signal-section">
+        <div class="title-sm">实时波形</div>
+        <canvas id="cv-wave" data-fit="200"></canvas>
+      </div>
+      <div class="stage signal-section">
+        <div class="title-sm">d-q 电流矢量</div>
+        <canvas id="cv-dq" data-fit="200"></canvas>
+      </div>
+    </div>
+
+    <div class="stage signal-section" style="margin-top:16px;">
+      <div class="title-sm">实时数值曲线（点击按钮选择显示哪条）</div>
+      <div id="curve-selector" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;"></div>
+      <canvas id="cv-values" data-fit="180"></canvas>
+
+      <div class="title-sm" style="margin-top:14px;">实时数值（可选中复制）</div>
+      <div class="value-grid">
+        <span class="k">ω_ref</span><span class="v accent" id="v-omega-ref">0.000</span>
+        <span class="k">ω_act</span><span class="v accent" id="v-omega-act">0.000</span>
+        <span class="k">Δω (静差)</span><span class="v yellow" id="v-omega-err">0.000</span>
+        <span class="k">TL</span><span class="v red" id="v-TL-val">0.000</span>
+        <span class="k">id_ref</span><span class="v green" id="v-id-ref">0.000</span>
+        <span class="k">id</span><span class="v green" id="v-id">0.000</span>
+        <span class="k">iq_ref</span><span class="v yellow" id="v-iq-ref">0.000</span>
+        <span class="k">iq</span><span class="v yellow" id="v-iq">0.000</span>
+        <span class="k">Te</span><span class="v red" id="v-Te">0.000</span>
+        <span class="k">vd*</span><span class="v accent" id="v-vd">0.000</span>
+        <span class="k">vq*</span><span class="v accent" id="v-vq">0.000</span>
+        <span class="k">时间</span><span class="v" id="v-time">0.00 s</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>综合演示：</b>这一页把 FOC 双闭环的<b>全流程</b>浓缩到一屏：控制框图实时高亮信号流，右侧 4 条波形显示
+  <b>转速跟踪</b>（ω_ref 绿虚线 vs ω 蓝实线）和 <b>电流跟踪</b>（id_ref/iq_ref 虚线 vs 实际 id/iq 实线），
+  d-q 矢量图显示电流矢量相对 d/q 轴的位置。拖动 ω_ref 和 TL 滑块，观察系统如何快速稳定——
+  这就是闭环的威力：<b>无静差、抗扰动、响应快</b>。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0,
+  playing: false,
+  speed: 1.0,
+  w_ref: 15,
+  TL: 0,
+  // PI 参数（固定好参数）
+  Kp_w: 0.5, Ki_w: 2.0,
+  Kp_d: 2.0, Ki_d: 20,
+  Kp_q: 2.0, Ki_q: 20,
+  // 电机与控制器
+  motor: null,
+  pi_d: null, pi_q: null, pi_w: null,
+  // 历史
+  history: [],
+  dt: 0.001,
+  // 信号流阶段（用于框图高亮）：0~5
+  flowStage: 0,
+  // ★ 曲线选择（默认显示关键几条）
+  selectedCurves: {
+    'w_ref':  false,
+    'w':      true,
+    'err':    false,
+    'TL':     false,
+    'id_ref': false,
+    'id':     true,
+    'iq_ref': false,
+    'iq':     true,
+    'Te':     false,
+    'vd':     false,
+    'vq':     false,
+  },
+};
+
+// 曲线定义（key / 颜色 / 中文名 / 取 history 里的字段）
+const CURVE_DEFS = [
+  { key: 'w_ref',  color: '#3fb950', label: 'ω_ref', get: h => h.w_ref },
+  { key: 'w',      color: '#58a6ff', label: 'ω_act', get: h => h.w },
+  { key: 'err',    color: '#f0b429', label: 'Δω',    get: h => h.w_ref - h.w },
+  { key: 'TL',     color: '#f85149', label: 'TL',    get: h => h.TL },
+  { key: 'id_ref', color: '#3fb950', label: 'id_ref',get: h => h.id_ref },
+  { key: 'id',     color: '#58a6ff', label: 'id',    get: h => h.id },
+  { key: 'iq_ref', color: '#d29922', label: 'iq_ref',get: h => h.iq_ref },
+  { key: 'iq',     color: '#e3b341', label: 'iq',    get: h => h.iq },
+  { key: 'Te',     color: '#f85149', label: 'Te',    get: h => h.Te },
+  { key: 'vd',     color: '#d2a8ff', label: 'vd*',   get: h => h.vd },
+  { key: 'vq',     color: '#a371f7', label: 'vq*',   get: h => h.vq },
+];
+
+const $ = id => document.getElementById(id);
+
+function resetSim() {
+  state.motor = FOC_MOTOR.createState();
+  state.pi_d = FOC_MOTOR.createPIController(state.Kp_d, state.Ki_d);
+  state.pi_q = FOC_MOTOR.createPIController(state.Kp_q, state.Ki_q);
+  state.pi_w = FOC_MOTOR.createPIController(state.Kp_w, state.Ki_w);
+  state.t = 0;
+  state.history = [];
+  state.flowStage = 0;
+  $('v-time').textContent = '0.00 s';
+}
+
+// 事件
+$('s-wref').oninput = e => {
+  state.w_ref = +e.target.value;
+  $('v-wref').textContent = state.w_ref.toFixed(2);
+};
+$('s-tl').oninput = e => {
+  state.TL = +e.target.value;
+  $('v-tl').textContent = state.TL.toFixed(2);
+};
+$('s-sp').oninput = e => {
+  state.speed = +e.target.value;
+  $('v-sp').textContent = state.speed.toFixed(1) + '×';
+};
+$('btn-load-up').onclick = () => {
+  state.TL = Math.min(0.5, state.TL + 0.15);
+  $('s-tl').value = state.TL;
+  $('v-tl').textContent = state.TL.toFixed(2);
+};
+$('btn-load-zero').onclick = () => {
+  state.TL = 0;
+  $('s-tl').value = 0;
+  $('v-tl').textContent = '0.00';
+};
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) {
+    state._everStarted = true;   // ★ 标记"已启动过"
+    lastT = performance.now();
+    loop();
+  }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 开始仿真';
+};
+$('btn-reset').onclick = () => {
+  // ★ 修正重置逻辑：
+  // - 未启动（从未点过播放）：保持未启动，只清空
+  // - 运行中：清空后继续跑
+  // - 暂停中：清空后自动变成运行中
+  const wasPlaying = state.playing;
+  const everStarted = state._everStarted || false;
+
+  resetSim();
+
+  if (!everStarted) {
+    // 从未启动过 —— 保持未启动
+    state.playing = false;
+    $('btn-play').textContent = '▶ 开始仿真';
+  } else {
+    // 启动过 —— 重置后继续运行
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  drawAll();
+};
+
+// ===== 仿真一步 =====
+function stepOnce() {
+  const dt = state.dt;
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  const m = state.motor;
+
+  const w_act = m.omega_m;
+  const e_w = state.w_ref - w_act;
+  const iq_ref = FOC_MOTOR.stepPI(state.pi_w, e_w, dt, 1.5);
+  const id_ref = 0;
+
+  const e_id = id_ref - m.id;
+  const e_iq = iq_ref - m.iq;
+  const vd_star = FOC_MOTOR.stepPI(state.pi_d, e_id, dt, 1.0);
+  const vq_star = FOC_MOTOR.stepPI(state.pi_q, e_iq, dt, 1.0);
+
+  const newSt = FOC_MOTOR.stepStandard(m, vd_star, vq_star, state.TL, dt, P);
+  state.motor = newSt;
+
+  state.history.push({
+    t: state.t,
+    w_ref: state.w_ref, w: newSt.omega_m,
+    id_ref, id: newSt.id,
+    iq_ref, iq: newSt.iq,
+    Te: newSt.Te, TL: state.TL,
+    vd: vd_star, vq: vq_star,
+  });
+
+  // 信号流循环高亮（每 6 步切换一次）
+  state.flowStage = Math.floor(state.t * 10) % 6;
+}
+
+function trimHistory() {
+  const MAX = 4000;
+  if (state.history.length > MAX) {
+    const thin = [];
+    for (let i = 0; i < state.history.length; i += 2) thin.push(state.history[i]);
+    state.history = thin;
+  }
+}
+
+// ===== 画布 =====
+const cvBlock  = $('cv-block'),  ctxB = cvBlock.getContext('2d');
+const cvWave   = $('cv-wave'),   ctxW = cvWave.getContext('2d');
+const cvDQ     = $('cv-dq'),     ctxD = cvDQ.getContext('2d');
+const cvValues = $('cv-values'), ctxV = cvValues.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const hl = Math.max(4, Math.min(headLen, len * 0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 控制框图（带实时高亮）=====
+function drawBlock() {
+  const W = cvBlock.clientWidth, H = cvBlock.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxB.clearRect(0, 0, W, H);
+
+  const boxW = 96, boxH = 44, gap = 14;
+  const labels = ['ω_ref', '速度 PI', '电流 PI', '逆 Park', 'SVPWM', '电机'];
+  const totalW = boxW * labels.length + gap * (labels.length - 1);
+  const startX = (W - totalW) / 2;
+  const y = H / 2 - boxH / 2 - 10;
+
+  // 反馈线在下方
+  const feedbackY = H - 22;
+
+  // 高亮：信号流阶段
+  // flowStage 每步循环 0~5，对应 6 个方块
+  const stage = state.flowStage;
+
+  labels.forEach((lb, i) => {
+    const x = startX + i * (boxW + gap);
+    const isActive = (i === stage) && state.playing;
+    // 高亮色
+    ctxB.fillStyle = isActive ? '#1f6feb' : '#21262d';
+    ctxB.strokeStyle = isActive ? '#58a6ff' : '#30363d';
+    ctxB.lineWidth = isActive ? 2 : 1.5;
+    ctxB.fillRect(x, y, boxW, boxH);
+    ctxB.strokeRect(x, y, boxW, boxH);
+    ctxB.fillStyle = isActive ? '#fff' : '#e6edf3';
+    ctxB.font = 'bold 12px sans-serif';
+    ctxB.textAlign = 'center';
+    ctxB.fillText(lb, x + boxW / 2, y + boxH / 2 + 4);
+    ctxB.textAlign = 'start';
+
+    if (i < labels.length - 1) {
+      arrow(ctxB, x + boxW, y + boxH / 2, x + boxW + gap, y + boxH / 2, '#7d8590', 1.5, 6);
+    }
+  });
+
+  // 反馈线（蓝）
+  const lastX = startX + (labels.length - 1) * (boxW + gap) + boxW / 2;
+  const firstX = startX + boxW / 2;
+  ctxB.strokeStyle = '#58a6ff'; ctxB.lineWidth = 1.5;
+  ctxB.beginPath();
+  ctxB.moveTo(lastX, y + boxH);
+  ctxB.lineTo(lastX, feedbackY);
+  ctxB.lineTo(firstX, feedbackY);
+  ctxB.lineTo(firstX, y + boxH);
+  ctxB.stroke();
+
+  ctxB.fillStyle = '#58a6ff';
+  ctxB.font = 'bold 11px sans-serif';
+  ctxB.textAlign = 'center';
+  ctxB.fillText('✓ 反馈（ω, id, iq）', W / 2, feedbackY + 16);
+  ctxB.textAlign = 'start';
+
+  // 左上角提示
+  ctxB.fillStyle = '#7d8590';
+  ctxB.font = '11px sans-serif';
+  ctxB.fillText('信号流实时高亮（蓝框）', 12, 16);
+}
+
+// ===== 波形（支持多曲线选择）=====
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 40, plotY = 20, plotH = H - 40;
+  const plotW = W - pad * 2;
+
+  ctxW.fillStyle = '#0d1117';
+  ctxW.fillRect(pad, plotY, plotW, plotH);
+  ctxW.strokeStyle = '#30363d';
+  ctxW.strokeRect(pad, plotY, plotW, plotH);
+
+  const hist = state.history;
+  if (hist.length < 2) {
+    ctxW.fillStyle = '#7d8590'; ctxW.font = '12px sans-serif';
+    ctxW.fillText('按"开始仿真"查看', pad + 20, plotY + 30);
+    return;
+  }
+
+  const tMax = Math.max(5, hist[hist.length - 1].t);
+  function mapX(t) { return pad + (t / tMax) * plotW; }
+
+  // 中轴线
+  const midY = plotY + plotH / 2;
+  ctxW.strokeStyle = '#21262d';
+  ctxW.beginPath(); ctxW.moveTo(pad, midY); ctxW.lineTo(pad + plotW, midY); ctxW.stroke();
+
+  // 对每条选中的曲线，各自归一化绘制
+  let legendX = pad + 6;
+  let legendY = plotY + 14;
+
+  CURVE_DEFS.forEach(def => {
+    if (!state.selectedCurves[def.key]) return;
+    // 找该曲线的最大绝对值
+    let vmax = 0.001;
+    hist.forEach(h => {
+      const v = def.get(h);
+      if (v !== null && v !== undefined) vmax = Math.max(vmax, Math.abs(v));
+    });
+    vmax *= 1.1;
+    const halfH = plotH / 2 - 8;
+
+    ctxW.strokeStyle = def.color;
+    ctxW.lineWidth = 2;
+    ctxW.beginPath();
+    hist.forEach((h, i) => {
+      const v = def.get(h);
+      if (v === null || v === undefined) return;
+      const x = mapX(h.t);
+      const y = midY - (v / vmax) * halfH;
+      if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+    });
+    ctxW.stroke();
+
+    // 图例
+    ctxW.fillStyle = def.color;
+    ctxW.font = '11px sans-serif';
+    ctxW.fillText(def.label, legendX, legendY);
+    legendX += 54;
+    if (legendX > plotW - 60) { legendX = pad + 6; legendY += 14; }
+  });
+
+  // 时间游标
+  const xNow = mapX(state.t);
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, plotY); ctxW.lineTo(xNow, plotY + plotH); ctxW.stroke();
+  ctxW.setLineDash([]);
+}
+
+// ===== 曲线选择器 UI =====
+function renderCurveSelector() {
+  const box = document.getElementById('curve-selector');
+  if (!box) return;
+  box.innerHTML = '';
+  CURVE_DEFS.forEach(def => {
+    const btn = document.createElement('button');
+    const on = state.selectedCurves[def.key];
+    btn.textContent = def.label;
+    btn.style.cssText = `
+      padding: 3px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1px solid ${on ? def.color : '#30363d'};
+      background: ${on ? def.color + '33' : '#21262d'};
+      color: ${on ? def.color : '#7d8590'};
+      cursor: pointer;
+      transition: all 0.15s;
+    `;
+    btn.onclick = () => {
+      state.selectedCurves[def.key] = !state.selectedCurves[def.key];
+      renderCurveSelector();
+      drawValues();
+    };
+    box.appendChild(btn);
+  });
+}
+
+// ===== 画"实时数值曲线"到 cvValues =====
+function drawValues() {
+  const W = cvValues.clientWidth, H = cvValues.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxV.clearRect(0, 0, W, H);
+  const pad = 40, plotY = 16, plotH = H - 32;
+  const plotW = W - pad * 2;
+
+  ctxV.fillStyle = '#0d1117';
+  ctxV.fillRect(pad, plotY, plotW, plotH);
+  ctxV.strokeStyle = '#30363d';
+  ctxV.strokeRect(pad, plotY, plotW, plotH);
+
+  const hist = state.history;
+  if (hist.length < 2) {
+    ctxV.fillStyle = '#7d8590'; ctxV.font = '12px sans-serif';
+    ctxV.fillText('按"开始仿真"查看', pad + 20, plotY + 30);
+    return;
+  }
+
+  const tMax = Math.max(5, hist[hist.length - 1].t);
+  function mapX(t) { return pad + (t / tMax) * plotW; }
+
+  const midY = plotY + plotH / 2;
+  ctxV.strokeStyle = '#21262d';
+  ctxV.beginPath(); ctxV.moveTo(pad, midY); ctxV.lineTo(pad + plotW, midY); ctxV.stroke();
+
+  let legendX = pad + 6;
+  let legendY = plotY + 14;
+
+  CURVE_DEFS.forEach(def => {
+    if (!state.selectedCurves[def.key]) return;
+    let vmax = 0.001;
+    hist.forEach(h => {
+      const v = def.get(h);
+      if (v !== null && v !== undefined) vmax = Math.max(vmax, Math.abs(v));
+    });
+    vmax *= 1.1;
+    const halfH = plotH / 2 - 8;
+
+    ctxV.strokeStyle = def.color;
+    ctxV.lineWidth = 2;
+    ctxV.beginPath();
+    hist.forEach((h, i) => {
+      const v = def.get(h);
+      if (v === null || v === undefined) return;
+      const x = mapX(h.t);
+      const y = midY - (v / vmax) * halfH;
+      if (i === 0) ctxV.moveTo(x, y); else ctxV.lineTo(x, y);
+    });
+    ctxV.stroke();
+
+    ctxV.fillStyle = def.color;
+    ctxV.font = '11px sans-serif';
+    ctxV.fillText(def.label, legendX, legendY);
+    legendX += 54;
+    if (legendX > plotW - 60) { legendX = pad + 6; legendY += 14; }
+  });
+
+  const xNow = mapX(state.t);
+  ctxV.strokeStyle = '#58a6ff'; ctxV.setLineDash([3,3]);
+  ctxV.beginPath(); ctxV.moveTo(xNow, plotY); ctxV.lineTo(xNow, plotY + plotH); ctxV.stroke();
+  ctxV.setLineDash([]);
+}
+
+// ===== d-q 电流矢量 =====
+function drawDQ() {
+  const W = cvDQ.clientWidth, H = cvDQ.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxD.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.36;
+  const m = state.motor || { id: 0, iq: 0 };
+
+  // 网格圆
+  ctxD.strokeStyle = '#21262d'; ctxD.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    ctxD.beginPath(); ctxD.arc(cx, cy, r * k / 2, 0, 2 * Math.PI); ctxD.stroke();
+  }
+
+  // d 轴（水平）和 q 轴（垂直）
+  ctxD.strokeStyle = '#3fb950'; ctxD.lineWidth = 2;
+  ctxD.beginPath(); ctxD.moveTo(cx - r, cy); ctxD.lineTo(cx + r, cy); ctxD.stroke();
+  ctxD.strokeStyle = '#d29922';
+  ctxD.beginPath(); ctxD.moveTo(cx, cy - r); ctxD.lineTo(cx, cy + r); ctxD.stroke();
+
+  // 轴标签
+  ctxD.fillStyle = '#3fb950'; ctxD.font = 'bold 13px sans-serif';
+  ctxD.fillText('d', cx + r + 4, cy + 4);
+  ctxD.fillStyle = '#d29922';
+  ctxD.fillText('q', cx + 4, cy - r - 4);
+
+  // 电流矢量
+  const scale = r / 1.5;   // 1.5 A 满量程
+  const ex = cx + m.id * scale;
+  const ey = cy - m.iq * scale;
+  arrow(ctxD, cx, cy, ex, ey, '#58a6ff', 3, 10);
+
+  // 投影线
+  ctxD.setLineDash([3,3]);
+  ctxD.strokeStyle = '#3fb95088';
+  ctxD.beginPath(); ctxD.moveTo(ex, cy); ctxD.lineTo(ex, ey); ctxD.stroke();
+  ctxD.strokeStyle = '#d2992288';
+  ctxD.beginPath(); ctxD.moveTo(cx, ey); ctxD.lineTo(ex, ey); ctxD.stroke();
+  ctxD.setLineDash([]);
+
+  // 数值
+  ctxD.fillStyle = '#3fb950'; ctxD.font = '11px monospace';
+  ctxD.fillText('id=' + m.id.toFixed(3), 8, H - 24);
+  ctxD.fillStyle = '#d29922';
+  ctxD.fillText('iq=' + m.iq.toFixed(3), 8, H - 10);
+}
+
+// ★ 修复：绘制前确保 canvas 尺寸正确（避免 clientWidth 为 0）
+function ensureCanvasSize() {
+  [cvBlock, cvWave, cvDQ, cvValues].forEach(cv => {
+    if (!cv) return;
+    const cssW = cv.clientWidth;
+    const cssH = parseInt(cv.dataset.fit || '200', 10);
+    if (cssW > 0 && cv.width !== Math.round(cssW * (window.devicePixelRatio || 1))) {
+      // 尺寸不对，重新 fit
+      if (window.fitCanvases) window.fitCanvases();
+    }
+  });
+}
+
+function drawAll() {
+  ensureCanvasSize();
+  drawBlock(); drawWave(); drawDQ(); drawValues();
+}
+
+// ===== 主循环 =====
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  let realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  const steps = Math.max(1, Math.round(realDt / state.dt));
+  for (let k = 0; k < steps; k++) {
+    state.t += state.dt;
+    stepOnce();
+  }
+  trimHistory();
+  // ★ 每帧检查 canvas 尺寸
+  ensureCanvasSize();
+
+  // 更新侧栏数值
+  const last = state.history[state.history.length - 1];
+  if (last) {
+    $('v-omega-ref').textContent = last.w_ref.toFixed(3);
+    $('v-omega-act').textContent = last.w.toFixed(3);
+    $('v-omega-err').textContent = (last.w_ref - last.w).toFixed(3);
+    $('v-TL-val').textContent = last.TL.toFixed(3);
+    $('v-id-ref').textContent = last.id_ref.toFixed(3);
+    $('v-id').textContent = last.id.toFixed(3);
+    $('v-iq-ref').textContent = last.iq_ref.toFixed(3);
+    $('v-iq').textContent = last.iq.toFixed(3);
+    $('v-Te').textContent = last.Te.toFixed(3);
+    $('v-vd').textContent = last.vd.toFixed(3);
+    $('v-vq').textContent = last.vq.toFixed(3);
+    $('v-time').textContent = state.t.toFixed(2) + ' s';
+  }
+
+  drawAll();
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('load', () => { resetSim(); renderCurveSelector(); drawAll(); });
+window.addEventListener('resize', () => setTimeout(drawAll, 120));
+
+resetSim();
+renderCurveSelector();
+drawAll();
+</script>
+</body>
+</html>

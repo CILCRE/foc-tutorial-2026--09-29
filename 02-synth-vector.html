@@ -1,0 +1,287 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>02 · 合成旋转矢量 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #30363d; }
+  .tab { padding: 8px 16px; background: transparent; color: #7d8590; border: none; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; font-size: 14px; }
+  .tab:hover { color: #e6edf3; background: transparent; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; background: transparent; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 10px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.8; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div style="background:#58a6ff22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">第一部分 · 坐标变换</b><br>
+      三个脉振矢量 → 一个旋转矢量
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="2" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">电流幅值 I <span id="v-I">1.00</span></div>
+    <input type="range" id="s-I" min="0.2" max="1.5" step="0.01" value="1" style="width:100%;">
+
+    <div class="section-title">电频率 f <span id="v-f">1.00 Hz</span></div>
+    <input type="range" id="s-f" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#f85149;">ia</span><span id="v-ia">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">ib</span><span id="v-ib">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">ic</span><span id="v-ic">0.000</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#58a6ff;">|F| 合成矢量幅值</span><span id="v-mag">0.000</span></div>
+      <div class="row"><span style="color:#58a6ff;">θ 方向</span><span id="v-theta">0.0°</span></div>
+    </div>
+
+    <div class="section-title">关键结论</div>
+    <div class="info-box" style="line-height:2;color:#c9d1d9;">
+      <div style="color:#58a6ff;">三个脉振矢量合成为一个旋转矢量</div>
+      <div style="margin-top:6px;">• 幅值恒定 = <b style="color:#3fb950;">1.5·I</b></div>
+      <div>• 方向以 ω 匀速旋转</div>
+      <div>• 这就是旋转磁场</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="tabs">
+        <button class="tab active" data-mode="vector">矢量视角</button>
+        <button class="tab" data-mode="physical">物理视角</button>
+        <button class="tab" data-mode="both">对照</button>
+      </div>
+      <canvas id="cv-main" data-fit="480"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>三个脉振矢量（每个方向固定，长度正弦变化）在空间上互差 120°，
+  它们的<b>矢量和</b>是一个<b>幅值恒定、匀速旋转</b>的矢量。
+  数学上可以证明：<span style="font-family:monospace;color:#d2a8ff;">F = 1.5·I·e^(jωt)</span>——幅值是单相电流幅值的 <b>1.5 倍</b>，方向以 ω 匀速旋转。
+  切到"物理视角"看真实的外转子 PMSM 剖面：外圈永磁体是转子（跟着合成矢量转），内圈三相绕组是定子。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/physical-view.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+const state = { t: 0, I: 1, f: 1, speed: 0.5, playing: false, everStarted: false,
+  mode: 'vector', polePairs: 2, windingStyle: 'c', distributed: true, showTeeth: true, showResult: true };
+
+const $ = id => document.getElementById(id);
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-I').oninput = e => { state.I = +e.target.value; $('v-I').textContent = state.I.toFixed(2); draw(); };
+$('s-f').oninput = e => { state.f = +e.target.value; $('v-f').textContent = state.f.toFixed(2)+' Hz'; syncTimeRange(); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.mode = tab.dataset.mode;
+    draw();
+  };
+});
+
+function waveTimeMax(f) { return Math.max(1, 2/f); }
+function syncTimeRange() {
+  const tMax = waveTimeMax(state.f);
+  $('s-t').max = tMax;
+  if (state.t > tMax) state.t = tMax;
+}
+
+function phaseCurrents(t, I, f) {
+  const th = 2 * Math.PI * f * t;
+  return {
+    ia: I * Math.cos(th),
+    ib: I * Math.cos(th - D2R(120)),
+    ic: I * Math.cos(th + D2R(120)),
+    th
+  };
+}
+
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 矢量视角 =====
+function drawVectorView(cx, cy, r) {
+  const { ia, ib, ic, th } = phaseCurrents(state.t, state.I, state.f);
+  const scale = r / 1.7;
+
+  // 网格
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    ctx.beginPath(); ctx.arc(cx, cy, scale*k/2, 0, 2*Math.PI); ctx.stroke();
+  }
+  // 轴
+  ctx.strokeStyle = '#30363d';
+  ctx.beginPath(); ctx.moveTo(cx - r*1.05, cy); ctx.lineTo(cx + r*1.05, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - r*1.05); ctx.lineTo(cx, cy + r*1.05); ctx.stroke();
+
+  const axes = [
+    { name: 'A', ang: 0,   color: '#f85149', i: ia },
+    { name: 'B', ang: 120, color: '#3fb950', i: ib },
+    { name: 'C', ang: 240, color: '#d29922', i: ic },
+  ];
+
+  // 三轴虚线 + 分矢量
+  axes.forEach(a => {
+    const rad = D2R(a.ang);
+    ctx.setLineDash([4,4]); ctx.strokeStyle = a.color + '40';
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(rad)*r*0.9, cy - Math.sin(rad)*r*0.9);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = a.color; ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(a.name,
+      cx + Math.cos(rad)*r*0.95 - 5,
+      cy - Math.sin(rad)*r*0.95 + 5);
+    arrow(ctx, cx, cy,
+      cx + Math.cos(rad)*a.i*scale,
+      cy - Math.sin(rad)*a.i*scale,
+      a.color, 2.5, 8);
+  });
+
+  // 合成矢量（三矢量和）
+  let sx = 0, sy = 0;
+  axes.forEach(a => {
+    const rad = D2R(a.ang);
+    sx += Math.cos(rad) * a.i;
+    sy += Math.sin(rad) * a.i;
+  });
+  const ex = cx + sx * scale, ey = cy - sy * scale;
+  arrow(ctx, cx, cy, ex, ey, '#58a6ff', 4, 12);
+  ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('合成 F', ex + 8, ey - 6);
+
+  // 标题
+  ctx.fillStyle = '#7d8590'; ctx.font = '12px sans-serif';
+  ctx.fillText('矢量视角：三个脉振矢量 → 合成旋转矢量', 12, 20);
+}
+
+// ===== 物理视角 =====
+function myPhysicalView(cx, cy, r) {
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+  // 机械角 = 电角度 / 极对数
+  const electricalAngle = 2 * Math.PI * state.f * state.t;
+  const rotorAngleDeg = (electricalAngle / state.polePairs) * 180 / Math.PI;
+
+  const physState = {
+    polePairs: state.polePairs,
+    windingStyle: state.windingStyle,
+    distributed: state.distributed,
+    showTeeth: state.showTeeth,
+    ia, ib, ic,
+    rotorAngleDeg,
+    showResult: state.showResult,
+    powered: true,
+    I: state.I,
+    showLabels: true,
+  };
+
+  if (window.drawPhysicalView) {
+    window.drawPhysicalView(ctx, cx, cy, r, physState);
+  }
+}
+
+// ===== 主绘制 =====
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  if (state.mode === 'vector') {
+    drawVectorView(W/2, H/2, Math.min(W, H) * 0.42);
+  } else if (state.mode === 'physical') {
+    myPhysicalView(W/2, H/2, Math.min(W, H) * 0.40);
+  } else {
+    const gap = 30;
+    const halfW = (W - gap) / 2;
+    drawVectorView(halfW/2, H/2, Math.min(halfW, H) * 0.40);
+    myPhysicalView(halfW + gap + halfW/2, H/2, Math.min(halfW, H) * 0.40);
+    ctx.strokeStyle = '#30363d';
+    ctx.beginPath(); ctx.moveTo(halfW + gap/2, 10); ctx.lineTo(halfW + gap/2, H-10); ctx.stroke();
+  }
+}
+
+function draw() { drawMain(); }
+
+window.addEventListener('load', () => { syncTimeRange(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = waveTimeMax(state.f);
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+
+  // 更新数值
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+  $('v-ia').textContent = ia.toFixed(3);
+  $('v-ib').textContent = ib.toFixed(3);
+  $('v-ic').textContent = ic.toFixed(3);
+  // 合成矢量幅值 = 1.5·I
+  $('v-mag').textContent = (1.5 * state.I).toFixed(3);
+  // θ = 2πft
+  const thetaDeg = ((state.f * state.t * 360) % 360);
+  $('v-theta').textContent = thetaDeg.toFixed(1) + '°';
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+syncTimeRange();
+draw();
+</script>
+</body>
+</html>

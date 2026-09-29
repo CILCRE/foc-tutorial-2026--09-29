@@ -1,0 +1,405 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>12 · 6 路 PWM 波形 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 8px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .state-table { width:100%; border-collapse:collapse; font-family:monospace; font-size:11px; }
+  .state-table td { padding:3px 6px; text-align:center; }
+  .state-table .on { color:#3fb950; font-weight:bold; }
+  .state-table .off { color:#484f58; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>PWM 波形</h3>
+
+    <div style="background:#f0b42922;border-left:3px solid #f0b429;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f0b429;">第二部分 · SVPWM</b><br>
+      6 路开关的时序
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="4" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">矢量幅值 |Vref| <span id="v-mag">0.50</span></div>
+    <input type="range" id="s-mag" min="0.1" max="0.9" step="0.01" value="0.5" style="width:100%;">
+
+    <div class="section-title">Vdc <span id="v-vdc">1.00</span></div>
+    <input type="range" id="s-vdc" min="0.5" max="2" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#3fb950;">扇区</span><span id="v-sector">1</span></div>
+      <div class="row"><span style="color:#3fb950;">T1</span><span id="v-t1">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">T2</span><span id="v-t2">0.000</span></div>
+      <div class="row"><span style="color:#7d8590;">T0</span><span id="v-t0">0.000</span></div>
+    </div>
+
+    <div class="section-title">三相占空比</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#f85149;">A↑ 占空比</span><span id="v-da">50%</span></div>
+      <div class="row"><span style="color:#3fb950;">B↑ 占空比</span><span id="v-db">50%</span></div>
+      <div class="row"><span style="color:#d29922;">C↑ 占空比</span><span id="v-dc">50%</span></div>
+    </div>
+
+    <div class="section-title">七段式时序</div>
+    <div class="hint">
+      一个 PWM 周期 Ts 内：<br>
+      <span style="font-family:monospace;color:#58a6ff;">T0/4 → T1/2 → T2/2 → T0/2 → T2/2 → T1/2 → T0/4</span><br>
+      从零矢量开始，到零矢量结束——这样开关动作最少，谐波小。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="600"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>6 路 PWM 波形：</b>逆变器有 3 个桥臂（A/B/C），每个桥臂有上管（↑）和下管（↓），
+  上下管<b>互补</b>（同一时刻只能一个开）。SVPWM 用"七段式"时序在一个周期内：
+  <span style="font-family:monospace;color:#d2a8ff;">T0/4 → T1/2 → T2/2 → T0/2 → T2/2 → T1/2 → T0/4</span>。<br>
+  中点（桥臂输出）平均电压 = 占空比 × Vdc − Vdc/2，这决定了三相实际电压。
+  切到"PWM 放大图"看单个周期内的开关细节；"实时滚动"看波形随时间变化。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const BASE_VECTORS = [
+  { id: 1, angDeg:   0, bits: '100' },
+  { id: 2, angDeg:  60, bits: '110' },
+  { id: 3, angDeg: 120, bits: '010' },
+  { id: 4, angDeg: 180, bits: '011' },
+  { id: 5, angDeg: 240, bits: '001' },
+  { id: 6, angDeg: 300, bits: '101' },
+];
+const SECTOR_NEIGHBORS = {
+  1: [1, 2], 2: [2, 3], 3: [3, 4],
+  4: [4, 5], 5: [5, 6], 6: [6, 1],
+};
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 0.5,
+  mag: 0.5,
+  Vdc: 1.0,
+  zoom: 'zoom',   // 'zoom' | 'scroll'
+};
+
+const $ = id => document.getElementById(id);
+
+// ===== SVPWM 计算 =====
+function svpwmCalc(valpha, vbeta, Vdc, Ts) {
+  Ts = Ts || 1;
+  let angle = Math.atan2(vbeta, valpha);
+  if (angle < 0) angle += 2 * Math.PI;
+  const sector = Math.floor(angle / (Math.PI / 3)) + 1;
+
+  const safeVdc = Math.max(0.001, Vdc);
+  const X = Math.sqrt(3) * vbeta * Ts / safeVdc;
+  const Y = (0.5*(Math.sqrt(3)*vbeta + 3*valpha)) * Ts / safeVdc;
+  const Z = (0.5*(Math.sqrt(3)*vbeta - 3*valpha)) * Ts / safeVdc;
+
+  let T1, T2;
+  switch (sector) {
+    case 1: T1 = -Z; T2 =  X; break;
+    case 2: T1 =  Z; T2 =  Y; break;
+    case 3: T1 =  X; T2 = -Y; break;
+    case 4: T1 = -X; T2 =  Z; break;
+    case 5: T1 = -Y; T2 = -Z; break;
+    case 6: T1 =  Y; T2 = -X; break;
+    default: T1 = 0; T2 = 0;
+  }
+  let T1c = Math.max(0, T1), T2c = Math.max(0, T2);
+  if (T1c + T2c > Ts) {
+    const k = Ts / (T1c + T2c + 1e-9);
+    T1c *= k; T2c *= k;
+  }
+  const T0 = Math.max(0, Ts - T1c - T2c);
+
+  const ta = (Ts - T1c - T2c) / 2;
+  const tb = ta + T1c;
+  const tc = tb + T2c;
+  let Ta, Tb, Tc;
+  switch (sector) {
+    case 1: Ta = tb; Tb = ta; Tc = tc; break;
+    case 2: Ta = ta; Tb = tc; Tc = tb; break;
+    case 3: Ta = ta; Tb = tb; Tc = tc; break;
+    case 4: Ta = tc; Tb = tb; Tc = ta; break;
+    case 5: Ta = tc; Tb = ta; Tc = tb; break;
+    case 6: Ta = tb; Tb = tc; Tc = ta; break;
+    default: Ta = Tb = Tc = Ts/2;
+  }
+  return { sector, T1: T1c, T2: T2c, T0, Ta, Tb, Tc, Ts };
+}
+
+// ===== 事件 =====
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-mag').oninput = e => { state.mag = +e.target.value; $('v-mag').textContent = state.mag.toFixed(2); draw(); };
+$('s-vdc').oninput = e => { state.Vdc = +e.target.value; $('v-vdc').textContent = state.Vdc.toFixed(2); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+$('btn-reset').onclick = () => {
+  state.t = 0;
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 播放动画';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+// 模式切换（放大 / 滚动）
+$('state-table') && ($('state-table').onclick = () => {});
+document.querySelectorAll('.switch-group button[data-mode]').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.switch-group button[data-mode]').forEach(b => {
+      b.classList.remove('on');
+      b.style.background = '#21262d';
+      b.style.color = '#7d8590';
+      b.style.borderColor = '#30363d';
+    });
+    btn.classList.add('on');
+    btn.style.background = '#1f6feb';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#1f6feb';
+    state.zoom = btn.dataset.mode;
+    draw();
+  };
+});
+
+function getVref(t) {
+  const omega = 2 * Math.PI * 0.25;
+  const th = t * omega;
+  return {
+    valpha: state.mag * Math.cos(th),
+    vbeta:  state.mag * Math.sin(th),
+  };
+}
+
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function draw() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  const { valpha, vbeta } = getVref(state.t);
+  const res = svpwmCalc(valpha, vbeta, state.Vdc, 1);
+
+  // 布局
+  const leftW = W * 0.32;
+  const rightW = W - leftW;
+
+  // 左：扇区图
+  drawSectorView(leftW / 2, H / 2, Math.min(leftW, H) * 0.36, valpha, vbeta, res);
+
+  // 右：6 路 PWM
+  drawPwmView(leftW, 0, rightW, H, res);
+
+  // 更新 UI
+  $('v-sector').textContent = res.sector;
+  $('v-t1').textContent = res.T1.toFixed(3);
+  $('v-t2').textContent = res.T2.toFixed(3);
+  $('v-t0').textContent = res.T0.toFixed(3);
+  $('v-da').textContent = (res.Ta/res.Ts*100).toFixed(1) + '%';
+  $('v-db').textContent = (res.Tb/res.Ts*100).toFixed(1) + '%';
+  $('v-dc').textContent = (res.Tc/res.Ts*100).toFixed(1) + '%';
+}
+
+// ===== 左：扇区图 =====
+function drawSectorView(cx, cy, r, valpha, vbeta, res) {
+  // 六边形
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  BASE_VECTORS.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.closePath(); ctx.stroke();
+
+  // 当前扇区高亮
+  const s = res.sector;
+  const startDeg = (s - 1) * 60, endDeg = s * 60;
+  ctx.fillStyle = 'rgba(240, 180, 41, 0.15)';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, r, -startDeg*RAD, -endDeg*RAD, true);
+  ctx.closePath(); ctx.fill();
+
+  // 基本矢量
+  BASE_VECTORS.forEach(v => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+    ctx.fillStyle = '#7d8590'; ctx.font = '10px sans-serif';
+    ctx.fillText('V' + v.id, x + 6, y + 4);
+  });
+
+  // Vref
+  const vNorm = 2 / Math.max(0.001, state.Vdc);
+  ctx.strokeStyle = '#58a6ff'; ctx.fillStyle = '#58a6ff';
+  ctx.lineWidth = 3;
+  const sx = cx + valpha * vNorm * r;
+  const sy = cy - vbeta * vNorm * r;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(sx, sy); ctx.stroke();
+  // 箭头
+  const ang = Math.atan2(sy - cy, sx - cx);
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(sx - 10*Math.cos(ang - 0.4), sy - 10*Math.sin(ang - 0.4));
+  ctx.lineTo(sx - 10*Math.cos(ang + 0.4), sy - 10*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('扇区 ' + s, 12, 22);
+}
+
+// ===== 右：6 路 PWM 波形 =====
+function drawPwmView(x0, y0, W, H, res) {
+  const padL = 50, padR = 20, padT = 40, padB = 30;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  // 标题
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('6 路 PWM（一个周期 Ts）', x0 + padL, y0 + 22);
+
+  // 顶部：显示当前使用的两个基本矢量
+  const nv = SECTOR_NEIGHBORS[res.sector];
+  if (nv) {
+    ctx.fillStyle = '#7d8590'; ctx.font = '11px monospace';
+    ctx.fillText('V' + nv[0] + ' T1=' + res.T1.toFixed(3) + ' | V' + nv[1] + ' T2=' + res.T2.toFixed(3) + ' | 0 T0=' + res.T0.toFixed(3), x0 + padL, y0 + padT - 6);
+  }
+
+  // 6 路波形
+  const lanes = [
+    { name: 'A↑', duty: res.Ta / res.Ts, color: '#f85149', upper: true },
+    { name: 'A↓', duty: 1 - res.Ta / res.Ts, color: '#7c3b36', upper: false },
+    { name: 'B↑', duty: res.Tb / res.Ts, color: '#3fb950', upper: true },
+    { name: 'B↓', duty: 1 - res.Tb / res.Ts, color: '#2a6b34', upper: false },
+    { name: 'C↑', duty: res.Tc / res.Ts, color: '#d29922', upper: true },
+    { name: 'C↓', duty: 1 - res.Tc / res.Ts, color: '#8f6a1c', upper: false },
+  ];
+
+  const laneH = plotH / 6;
+
+  lanes.forEach((lane, i) => {
+    const laneY0 = y0 + padT + i * laneH;
+    const midY = laneY0 + laneH * 0.5;
+    const highY = laneY0 + laneH * 0.2;
+    const lowY = laneY0 + laneH * 0.8;
+
+    // 基线
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0 + padL, midY); ctx.lineTo(x0 + padL + plotW, midY); ctx.stroke();
+
+    // 波形（居中）
+    const onDur = lane.duty * plotW;
+    const startX = x0 + padL + (plotW - onDur) / 2;
+    const endX = startX + onDur;
+
+    ctx.strokeStyle = lane.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (lane.upper) {
+      ctx.moveTo(x0 + padL, lowY);
+      ctx.lineTo(startX, lowY);
+      ctx.lineTo(startX, highY);
+      ctx.lineTo(endX, highY);
+      ctx.lineTo(endX, lowY);
+      ctx.lineTo(x0 + padL + plotW, lowY);
+    } else {
+      // 下桥臂：反相
+      ctx.moveTo(x0 + padL, highY);
+      ctx.lineTo(startX, highY);
+      ctx.lineTo(startX, lowY);
+      ctx.lineTo(endX, lowY);
+      ctx.lineTo(endX, highY);
+      ctx.lineTo(x0 + padL + plotW, highY);
+    }
+    ctx.stroke();
+
+    // 路名
+    ctx.fillStyle = lane.color; ctx.font = 'bold 11px monospace';
+    ctx.fillText(lane.name, x0 + 8, midY + 4);
+
+    // 占空比
+    ctx.fillStyle = '#7d8590'; ctx.font = '10px monospace';
+    ctx.fillText((lane.duty*100).toFixed(0) + '%', x0 + padL + plotW + 4, midY + 4);
+  });
+
+  // 时间轴
+  ctx.fillStyle = '#7d8590'; ctx.font = '10px monospace';
+  ctx.fillText('0', x0 + padL - 4, y0 + H - 8);
+  ctx.fillText('Ts', x0 + padL + plotW - 12, y0 + H - 8);
+
+  // 周期框
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + padL, y0 + padT - 2, plotW, plotH + 4);
+}
+
+window.addEventListener('load', () => { draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = 4;
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>
