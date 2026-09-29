@@ -30,7 +30,7 @@
 
 ## 🚀 在线预览
 
-**访问地址**：**https://cilcre.github.io/foc-tutorial-2026-09-29/**
+**访问地址**：**https://cilcre.github.io/foc-tutorial-2026--09-29/**
 
 **手机 / 电脑 / 平板都能看**，无需安装任何东西。
 
