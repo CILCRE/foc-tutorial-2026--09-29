@@ -1,0 +1,716 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>24 · 硬件系统 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 5px 8px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 11px; cursor: pointer; }
+  .switch-group button.on { background: #f85149; color: #fff; border-color: #f85149; }
+  .value-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 10px; font-size: 11px; font-family: monospace; line-height: 1.9;
+  }
+  .value-grid .k { color: #7d8590; }
+  .value-grid .v { text-align: right; }
+  .enc-btn {
+    padding: 4px 10px; font-size: 11px; border-radius: 4px;
+    border: 1px solid #30363d; background: #21262d; color: #7d8590;
+    cursor: pointer; transition: all .15s;
+  }
+  .enc-btn:hover { color: #e6edf3; }
+  .enc-btn.on { border-color: #d2a8ff; background: #d2a8ff33; color: #d2a8ff; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>硬件系统</h3>
+
+    <div style="background:#f8514922;border-left:3px solid #f85149;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f85149;">第五部分 · 综合与硬件</b><br>
+      真实的 FOC 硬件长啥样
+    </div>
+
+    <div class="section-title">给定转速 ω_ref <span id="v-wref">15.00</span></div>
+    <input type="range" id="s-wref" min="0" max="30" step="0.5" value="15" style="width:100%;">
+
+    <div class="section-title">负载转矩 TL <span id="v-tl">0.00</span></div>
+    <input type="range" id="s-tl" min="0" max="0.5" step="0.01" value="0" style="width:100%;">
+    <div class="switch-group" style="margin-top:6px;">
+      <button id="btn-load-up" style="padding:5px;">+ 加负载</button>
+      <button id="btn-load-zero" style="padding:5px;">归零</button>
+    </div>
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 开始仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="value-grid">
+      <span class="k">ω_ref</span><span class="v" style="color:#3fb950;" id="d-wref">0.000</span>
+      <span class="k">ω_act</span><span class="v" style="color:#58a6ff;" id="d-wact">0.000</span>
+      <span class="k">θ (电角度)</span><span class="v" style="color:#58a6ff;" id="d-theta">0.0°</span>
+      <span class="k">Vdc</span><span class="v" style="color:#f85149;" id="d-vdc">1.000</span>
+      <span class="k">Idc</span><span class="v" style="color:#f85149;" id="d-idc">0.000</span>
+      <span class="k">ia</span><span class="v" style="color:#3fb950;" id="d-ia">0.000</span>
+      <span class="k">ib</span><span class="v" style="color:#3fb950;" id="d-ib">0.000</span>
+      <span class="k">ic</span><span class="v" style="color:#3fb950;" id="d-ic">0.000</span>
+      <span class="k">id</span><span class="v" style="color:#d29922;" id="d-id">0.000</span>
+      <span class="k">iq</span><span class="v" style="color:#d29922;" id="d-iq">0.000</span>
+      <span class="k">Te</span><span class="v" style="color:#f85149;" id="d-te">0.000</span>
+      <span class="k">时间</span><span class="v" id="d-time">0.00 s</span>
+    </div>
+
+    <div class="section-title">硬件组成</div>
+    <div class="info-box" style="line-height:2;">
+      <div style="color:#f0b429;">▸ 电源 (Vdc)</div>
+      <div style="color:#f85149;">▸ 驱动板 (6×MOS)</div>
+      <div style="color:#58a6ff;">▸ 控制板 (MCU, FOC)</div>
+      <div style="color:#3fb950;">▸ 电机 (PMSM)</div>
+      <div style="color:#d2a8ff;">▸ 编码器</div>
+    </div>
+
+    <div class="hint" style="margin-top:12px;">
+      <b>观察：</b><br>
+      • PWM 方波在 MOSFET 上下<br>
+      • 三相线粗细随电流变<br>
+      • 编码器箭头随电机同步转<br>
+      • 外转子随电角度转
+    </div>
+  </div>
+
+  <div>
+    <div style="text-align:center; padding: 8px 0 12px;">
+      <h1 style="font-size: 24px; color: #e6edf3; margin: 0; letter-spacing: 2px; font-weight: 700;">
+        FOC 硬件系统 · 实时联动
+      </h1>
+      <p style="color: #7d8590; font-size: 12px; margin-top: 6px;">
+        电源 · 驱动板 · 控制板 · 电机 · 编码器
+      </p>
+    </div>
+
+    <div class="stage" style="position:relative;">
+      <canvas id="cv-hw" data-fit="700"></canvas>
+      <div id="enc-mode-btns" style="position:absolute; right:24px; bottom:80px; display:flex; flex-direction:column; gap:6px;">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:2px;text-align:center;">编码器接线</div>
+        <button class="enc-btn on" data-mode="simple">简化</button>
+        <button class="enc-btn" data-mode="inc6">增量 6 线</button>
+        <button class="enc-btn" data-mode="abs4">绝对 4 线</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>硬件系统：</b>这一页展示 FOC 系统的<b>物理组成</b>——电源提供直流母线电压 Vdc，
+  驱动板上 6 个 MOSFET 组成三相逆变桥（每路 MOSFET 上下对应 PWM 驱动信号），
+  控制板 MCU 实时跑 FOC 算法（Clarke→Park→PI×3→逆Park→SVPWM），
+  电机是外转子永磁同步电机，编码器读取转子角度和速度并反馈回 MCU。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+var RAD = Math.PI / 180;
+
+var state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 1.0,
+  w_ref: 15, TL: 0,
+  Vdc: 1.0,
+  Kp_w: 0.5, Ki_w: 2.0,
+  Kp_d: 10, Ki_d: 200,
+  Kp_q: 10, Ki_q: 200,
+  motor: null,
+  pi_w: null, pi_d: null, pi_q: null,
+  dt: 0.0005,
+  lastData: null,
+  encMode: 'simple'
+};
+
+function $(id) { return document.getElementById(id); }
+
+function resetSim() {
+  state.motor = FOC_MOTOR.createState();
+  state.pi_w = FOC_MOTOR.createPIController(state.Kp_w, state.Ki_w);
+  state.pi_d = FOC_MOTOR.createPIController(state.Kp_d, state.Ki_d);
+  state.pi_q = FOC_MOTOR.createPIController(state.Kp_q, state.Ki_q);
+  state.t = 0;
+  state.lastData = {
+    id: 0, iq: 0, Te: 0, vd: 0, vq: 0, Idc: 0,
+    ia: 0, ib: 0, ic: 0,
+    omega: 0, theta_e: 0, w_ref: state.w_ref, TL: state.TL
+  };
+  $('d-time').textContent = '0.00 s';
+}
+
+$('s-wref').oninput = function (e) { state.w_ref = +e.target.value; $('v-wref').textContent = state.w_ref.toFixed(2); };
+$('s-tl').oninput = function (e) { state.TL = +e.target.value; $('v-tl').textContent = state.TL.toFixed(2); };
+$('s-sp').oninput = function (e) { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1) + '×'; };
+
+$('btn-load-up').onclick = function () {
+  state.TL = Math.min(0.5, state.TL + 0.15);
+  $('s-tl').value = state.TL;
+  $('v-tl').textContent = state.TL.toFixed(2);
+};
+$('btn-load-zero').onclick = function () {
+  state.TL = 0;
+  $('s-tl').value = 0;
+  $('v-tl').textContent = '0.00';
+};
+
+function updateEncBtns() {
+  var btns = document.querySelectorAll('.enc-btn');
+  for (var i = 0; i < btns.length; i++) {
+    if (btns[i].dataset.mode === state.encMode) {
+      btns[i].classList.add('on');
+    } else {
+      btns[i].classList.remove('on');
+    }
+  }
+}
+
+var encBtns = document.querySelectorAll('.enc-btn');
+for (var ei = 0; ei < encBtns.length; ei++) {
+  (function (btn) {
+    btn.onclick = function () {
+      state.encMode = btn.dataset.mode;
+      updateEncBtns();
+      drawAll();
+    };
+  })(encBtns[ei]);
+}
+
+$('btn-play').onclick = function () {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 开始仿真';
+};
+
+$('btn-reset').onclick = function () {
+  resetSim();
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 开始仿真';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  drawAll();
+};
+
+function stepOnce() {
+  var dt = state.dt;
+  var P = FOC_MOTOR.DEFAULT_PARAMS;
+  var m = state.motor;
+  var e_w = state.w_ref - m.omega_m;
+  var iq_ref = FOC_MOTOR.stepPI(state.pi_w, e_w, dt, 1.5);
+  var id_ref = 0;
+  var vd_star = FOC_MOTOR.stepPI(state.pi_d, id_ref - m.id, dt, 1.0);
+  var vq_star = FOC_MOTOR.stepPI(state.pi_q, iq_ref - m.iq, dt, 1.0);
+  var newSt = FOC_MOTOR.stepStandard(m, vd_star, vq_star, state.TL, dt, P);
+  state.motor = newSt;
+  var Idc = 1.5 * (vd_star * newSt.id + vq_star * newSt.iq) / Math.max(0.1, state.Vdc);
+  var th = newSt.theta_e;
+  var c = Math.cos(th), s = Math.sin(th);
+  var valpha = newSt.id * c - newSt.iq * s;
+  var vbeta = newSt.id * s + newSt.iq * c;
+  var ia = valpha;
+  var ib = -0.5 * valpha + Math.sqrt(3) / 2 * vbeta;
+  var ic = -0.5 * valpha - Math.sqrt(3) / 2 * vbeta;
+  state.lastData = {
+    id: newSt.id, iq: newSt.iq, Te: newSt.Te,
+    vd: vd_star, vq: vq_star, Idc: Idc,
+    ia: ia, ib: ib, ic: ic,
+    omega: newSt.omega_m, theta_e: newSt.theta_e,
+    w_ref: state.w_ref, TL: state.TL
+  };
+}
+
+var cvHw = $('cv-hw'), ctx = cvHw.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  var ang = Math.atan2(y2 - y1, x2 - x1);
+  var len = Math.hypot(x2 - x1, y2 - y1);
+  var hl = Math.max(4, Math.min(headLen, len * 0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl * Math.cos(ang - 0.4), y2 - hl * Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl * Math.cos(ang + 0.4), y2 - hl * Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawPwmWave(x, y, w, h, duty, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  var periods = 3;
+  var periodW = w / periods;
+  for (var k = 0; k < periods; k++) {
+    var px = x + k * periodW;
+    var onW = periodW * Math.max(0.05, Math.min(0.95, duty));
+    ctx.moveTo(px, y + h);
+    ctx.lineTo(px, y);
+    ctx.lineTo(px + onW, y);
+    ctx.lineTo(px + onW, y + h);
+    ctx.lineTo(px + periodW, y + h);
+  }
+  ctx.stroke();
+}
+
+function drawMotor(cx, cy, R, thetaE, omega) {
+  var rRotorOuter = R * 0.98;
+  var rRotorInner = R * 0.78;
+  var rStatorOuter = R * 0.76;
+  var rShaft = R * 0.15;
+  var polePairs = 4;
+  var poles = polePairs * 2;
+  var rotorAngleDeg = (thetaE / polePairs) * 180 / Math.PI;
+  var poleArc = 360 / poles;
+
+  for (var k = 0; k < poles; k++) {
+    var startDeg = k * poleArc + rotorAngleDeg;
+    var endDeg = startDeg + poleArc;
+    var isNorth = (k % 2 === 0);
+    var startRad = -startDeg * RAD;
+    var endRad = -endDeg * RAD;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rRotorOuter, startRad, endRad, true);
+    ctx.arc(cx, cy, rRotorInner, endRad, startRad, false);
+    ctx.closePath();
+    ctx.fillStyle = isNorth ? '#f85149' : '#388bfd';
+    ctx.fill();
+    ctx.strokeStyle = '#0f1720'; ctx.lineWidth = 1; ctx.stroke();
+
+    if (R > 60) {
+      var midDeg = startDeg + poleArc / 2;
+      var lx = cx + Math.cos(midDeg * RAD) * (rRotorOuter + rRotorInner) / 2;
+      var ly = cy - Math.sin(midDeg * RAD) * (rRotorOuter + rRotorInner) / 2;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold ' + Math.round(R * 0.09) + 'px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(isNorth ? 'N' : 'S', lx, ly);
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+    }
+  }
+
+  var nSlots = 12;
+  for (var k2 = 0; k2 < nSlots; k2++) {
+    var slotArc = 360 / nSlots;
+    var midDeg2 = k2 * slotArc;
+    var px = cx + Math.cos(midDeg2 * RAD) * (rStatorOuter * 0.85);
+    var py = cy - Math.sin(midDeg2 * RAD) * (rStatorOuter * 0.85);
+    ctx.fillStyle = '#30363d';
+    ctx.beginPath(); ctx.arc(px, py, R * 0.03, 0, 2 * Math.PI); ctx.fill();
+  }
+  ctx.strokeStyle = '#484f58'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, rStatorOuter, 0, 2 * Math.PI); ctx.stroke();
+
+  ctx.fillStyle = '#7d8590';
+  ctx.beginPath(); ctx.arc(cx, cy, rShaft, 0, 2 * Math.PI); ctx.fill();
+
+  if (Math.abs(omega) > 0.1) {
+    var arrowR = rRotorOuter + 14;
+    var dir = omega > 0 ? -1 : 1;
+    var arcStart = -Math.PI / 2;
+    var arcEnd = -Math.PI / 2 + dir * 0.8;
+    ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, arrowR, arcStart, arcEnd, dir < 0); ctx.stroke();
+    var tipX = cx + Math.cos(arcEnd) * arrowR;
+    var tipY = cy + Math.sin(arcEnd) * arrowR;
+    var tang = arcEnd + dir * Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - 8 * Math.cos(tang - 0.4), tipY - 8 * Math.sin(tang - 0.4));
+    ctx.lineTo(tipX - 8 * Math.cos(tang + 0.4), tipY - 8 * Math.sin(tang + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = '#58a6ff'; ctx.fill();
+  }
+}
+
+function drawEncoder(cx, cy, R, thetaE) {
+  ctx.fillStyle = '#161b22'; ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+
+  ctx.strokeStyle = '#7d8590'; ctx.lineWidth = 1;
+  for (var k = 0; k < 24; k++) {
+    var ang = k * (2 * Math.PI / 24);
+    var x1 = cx + Math.cos(ang) * R * 0.85;
+    var y1 = cy + Math.sin(ang) * R * 0.85;
+    var x2 = cx + Math.cos(ang) * R * 0.95;
+    var y2 = cy + Math.sin(ang) * R * 0.95;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+
+  var polePairs = 4;
+  var mechAngle = -thetaE / polePairs;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(mechAngle);
+  ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R * 0.75, 0); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(R * 0.75, 0);
+  ctx.lineTo(R * 0.6, -R * 0.12);
+  ctx.lineTo(R * 0.6, R * 0.12);
+  ctx.closePath();
+  ctx.fillStyle = '#d2a8ff'; ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = '#d2a8ff';
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2 * Math.PI); ctx.fill();
+
+  // 编码器文字：圆盘右侧居中
+  ctx.fillStyle = '#d2a8ff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('编码器', cx + R + 14, cy);
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawAll() {
+  var W = cvHw.clientWidth, H = cvHw.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  var d = state.lastData || { id: 0, iq: 0, Te: 0, vd: 0, vq: 0, Idc: 0, ia: 0, ib: 0, ic: 0, omega: 0, theta_e: 0, w_ref: state.w_ref, TL: state.TL };
+
+  var powerX = 30, powerY = 260, powerW = 90, powerH = 100;
+  var drvX = 180, drvY = 100, drvW = 380, drvH = 300;
+  var motorCx = W - 200, motorCy = 280, motorR = 110;
+  var mcuX = 30, mcuY = 520, mcuW = 540, mcuH = 120;
+  var encCx = motorCx, encCy = motorCy + motorR + 100, encR = 45;
+
+  // 电源
+  ctx.fillStyle = '#161b22'; ctx.strokeStyle = '#f0b429'; ctx.lineWidth = 2;
+  ctx.fillRect(powerX, powerY, powerW, powerH);
+  ctx.strokeRect(powerX, powerY, powerW, powerH);
+  ctx.fillStyle = '#f0b429'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('电源', powerX + powerW / 2, powerY + 26);
+  ctx.font = 'bold 15px monospace'; ctx.fillStyle = '#e6edf3';
+  ctx.fillText('Vdc', powerX + powerW / 2, powerY + 52);
+  ctx.font = '12px monospace'; ctx.fillStyle = '#f0b429';
+  ctx.fillText(state.Vdc.toFixed(2) + ' V', powerX + powerW / 2, powerY + 74);
+  ctx.textAlign = 'start';
+
+  var lineY1 = powerY + powerH * 0.35;
+  var lineY2 = powerY + powerH * 0.65;
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(powerX + powerW, lineY1); ctx.lineTo(drvX, lineY1); ctx.stroke();
+  ctx.strokeStyle = '#7d8590';
+  ctx.beginPath(); ctx.moveTo(powerX + powerW, lineY2); ctx.lineTo(drvX, lineY2); ctx.stroke();
+  ctx.fillStyle = '#f85149'; ctx.font = 'bold 11px monospace';
+  ctx.fillText('+', powerX + powerW + 6, lineY1 - 4);
+  ctx.fillStyle = '#7d8590';
+  ctx.fillText('-', powerX + powerW + 6, lineY2 - 4);
+  ctx.fillStyle = '#f0b429'; ctx.font = '10px monospace';
+  ctx.fillText('Idc=' + d.Idc.toFixed(3) + 'A', powerX + powerW + 16, lineY1 - 14);
+
+  // 驱动板
+  ctx.fillStyle = '#161b22'; ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2;
+  ctx.fillRect(drvX, drvY, drvW, drvH);
+  ctx.strokeRect(drvX, drvY, drvW, drvH);
+  ctx.fillStyle = '#f85149'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('驱动板 · 三相逆变桥', drvX + 10, drvY + 20);
+
+  var armColors = ['#f85149', '#3fb950', '#d29922'];
+  var armNames = ['A', 'B', 'C'];
+  var colW = 100, colGap = 30;
+  var colStartX = drvX + (drvW - (colW * 3 + colGap * 2)) / 2;
+  var mosW = 60, mosH = 34;
+  var upY = drvY + 130;
+  var dnY = drvY + 195;
+  var pwmH = 10, pwmW = 80;
+
+  for (var ai = 0; ai < armNames.length; ai++) {
+    (function (i) {
+      var name = armNames[i];
+      var colCx = colStartX + i * (colW + colGap) + colW / 2;
+      var mosX = colCx - mosW / 2;
+      var color = armColors[i];
+      var curr = [d.ia, d.ib, d.ic][i];
+      var dutyUp = Math.max(0.1, Math.min(0.9, 0.5 + curr * 0.3));
+
+      var pwmUpY = upY - pwmH - 12;
+      drawPwmWave(colCx - pwmW / 2, pwmUpY, pwmW, pwmH, dutyUp, color);
+      ctx.fillStyle = color; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(name + 'UP PWM', colCx, pwmUpY - 4);
+
+      ctx.fillStyle = '#21262d'; ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      ctx.fillRect(mosX, upY, mosW, mosH);
+      ctx.strokeRect(mosX, upY, mosW, mosH);
+      ctx.fillStyle = color; ctx.font = 'bold 13px monospace';
+      ctx.fillText(name + 'UP', colCx, upY + mosH / 2 + 5);
+
+      ctx.fillStyle = '#21262d';
+      ctx.fillRect(mosX, dnY, mosW, mosH);
+      ctx.strokeRect(mosX, dnY, mosW, mosH);
+      ctx.fillStyle = color;
+      ctx.fillText(name + 'DN', colCx, dnY + mosH / 2 + 5);
+
+      var dutyDn = 1 - dutyUp;
+      var pwmDnY = dnY + mosH + 10;
+      drawPwmWave(colCx - pwmW / 2, pwmDnY, pwmW, pwmH, dutyDn, color);
+      ctx.fillStyle = color; ctx.font = '9px monospace';
+      ctx.fillText(name + 'DN PWM', colCx, pwmDnY + pwmH + 12);
+
+      var midY = (upY + mosH + dnY) / 2;
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(colCx, upY + mosH); ctx.lineTo(colCx, dnY); ctx.stroke();
+      ctx.fillStyle = color; ctx.font = 'bold 10px monospace';
+      ctx.fillText(name, colCx + 6, midY + 4);
+    })(ai);
+  }
+  ctx.textAlign = 'start';
+
+  // 三相线
+  var phaseYs = [
+    (upY + mosH + dnY) / 2 - 30,
+    (upY + mosH + dnY) / 2,
+    (upY + mosH + dnY) / 2 + 30
+  ];
+  for (var pi = 0; pi < armNames.length; pi++) {
+    (function (i) {
+      var curr = [d.ia, d.ib, d.ic][i];
+      var thick = 1 + Math.min(5, Math.abs(curr) * 4);
+      var color = armColors[i];
+      var y = phaseYs[i];
+      ctx.strokeStyle = color; ctx.lineWidth = thick;
+      ctx.beginPath();
+      ctx.moveTo(drvX + drvW, y);
+      ctx.lineTo(motorCx - motorR - 10, y);
+      ctx.stroke();
+      ctx.fillStyle = color; ctx.font = '10px monospace';
+      ctx.fillText(armNames[i].toLowerCase() + '=' + curr.toFixed(2), drvX + drvW + 8, y - 6);
+    })(pi);
+  }
+
+  // 电机
+  drawMotor(motorCx, motorCy, motorR, d.theta_e, d.omega);
+  ctx.fillStyle = '#3fb950'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('PMSM (外转子)', motorCx, motorCy - motorR - 20);
+  ctx.font = '11px monospace'; ctx.fillStyle = '#7d8590';
+  ctx.fillText('omega=' + d.omega.toFixed(1) + ' rad/s', motorCx, motorCy + motorR + 22);
+  ctx.textAlign = 'start';
+
+  // 编码器
+  drawEncoder(encCx, encCy, encR, d.theta_e);
+  ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(motorCx, motorCy + motorR);
+  ctx.lineTo(encCx, encCy - encR);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 控制板
+  ctx.fillStyle = '#161b22'; ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+  ctx.fillRect(mcuX, mcuY, mcuW, mcuH);
+  ctx.strokeRect(mcuX, mcuY, mcuW, mcuH);
+  ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('控制板 · MCU (FOC 算法)', mcuX + 10, mcuY + 20);
+
+  var algos = ['Clarke', 'Park', 'PI x3', 'InvPark', 'SVPWM'];
+  var boxW = 90, boxH = 40, algoGap = 12;
+  var algoTotalW = boxW * 5 + algoGap * 4;
+  var algoStartX = mcuX + (mcuW - algoTotalW) / 2;
+  var algoY = mcuY + 42;
+  for (var ali = 0; ali < algos.length; ali++) {
+    (function (i) {
+      var bx = algoStartX + i * (boxW + algoGap);
+      ctx.fillStyle = '#21262d'; ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
+      ctx.fillRect(bx, algoY, boxW, boxH);
+      ctx.strokeRect(bx, algoY, boxW, boxH);
+      ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(algos[i], bx + boxW / 2, algoY + boxH / 2 + 4);
+      if (i < algos.length - 1) {
+        var ax1 = bx + boxW, ax2 = bx + boxW + algoGap;
+        arrow(ctx, ax1, algoY + boxH / 2, ax2, algoY + boxH / 2, '#58a6ff', 1.5, 5);
+      }
+    })(ali);
+  }
+  ctx.textAlign = 'start';
+
+  // MCU -> 驱动板
+  var pwmSignalX = mcuX + mcuW / 2;
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pwmSignalX, mcuY);
+  ctx.lineTo(pwmSignalX, drvY + drvH);
+  ctx.stroke();
+  arrow(ctx, pwmSignalX, drvY + drvH + 10, pwmSignalX, drvY + drvH, '#58a6ff', 2, 6);
+  ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('6 路 PWM 驱动信号', pwmSignalX, (drvY + drvH + mcuY) / 2 + 4);
+  ctx.textAlign = 'start';
+
+  // 编码器 -> MCU
+  var fbStartY = encCy + encR;
+  var fbEndX = mcuX + mcuW;
+  var fbEndY = mcuY + mcuH;
+
+  if (state.encMode === 'simple') {
+    var endX2 = mcuX + mcuW;
+    var midY2b = encCy + encR + 40;
+
+    ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(encCx, fbStartY); ctx.lineTo(encCx, midY2b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(encCx, midY2b); ctx.lineTo(endX2, midY2b); ctx.stroke();
+
+    ctx.fillStyle = '#d2a8ff';
+    ctx.beginPath(); ctx.arc(encCx, fbStartY, 4, 0, 2 * Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.arc(endX2, midY2b, 4, 0, 2 * Math.PI); ctx.fill();
+    arrow(ctx, endX2 - 12, midY2b, endX2, midY2b, '#d2a8ff', 2, 6);
+
+    var spinX = encCx + ((Math.sin(state.t * 4) + 1) / 2) * (endX2 - encCx);
+    ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(spinX, midY2b - 15, 6, 0, 1.5 * Math.PI); ctx.stroke();
+
+    ctx.fillStyle = '#d2a8ff'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('theta, omega 反馈（合并）', (encCx + endX2) / 2, midY2b + 16);
+    ctx.textAlign = 'start';
+  } else {
+    var wires = state.encMode === 'inc6'
+      ? [
+          { color: '#f85149', label: '+5V' },
+          { color: '#7d8590', label: 'GND' },
+          { color: '#58a6ff', label: 'A+' },
+          { color: '#a8d4ff', label: 'A-' },
+          { color: '#3fb950', label: 'B+' },
+          { color: '#9fe8b0', label: 'B-' }
+        ]
+      : [
+          { color: '#f85149', label: '+5V' },
+          { color: '#7d8590', label: 'GND' },
+          { color: '#7fffd4', label: 'D+' },
+          { color: '#d2a8ff', label: 'D-' }
+        ];
+
+    var N = wires.length;
+    var wireGap = 20;
+    var downStartX = encCx - (N - 1) * wireGap / 2;
+    var downStartY = fbStartY + 30;
+    var baseDownY = encCy + encR + 40;
+    var endX = mcuX + mcuW;
+    var endY = mcuY + mcuH;
+
+    // ★ 6 根线：只画"向下段"，各自独立
+    var yConverge = baseDownY + (N - 1) * wireGap;   // 汇聚点 Y（最深的线所在）
+
+    for (var wi = 0; wi < N; wi++) {
+      (function (i) {
+        var w = wires[i];
+        var xDown = downStartX + i * wireGap;
+
+        ctx.strokeStyle = w.color; ctx.lineWidth = 2;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+        // 第 1 段：向下（从起点到汇聚点）
+        ctx.beginPath(); ctx.moveTo(xDown, downStartY); ctx.lineTo(xDown, yConverge); ctx.stroke();
+
+        // ★ 装饰 1：起点小圆点（编码器接线端子）
+        ctx.fillStyle = w.color;
+        ctx.beginPath(); ctx.arc(xDown, downStartY, 3, 0, 2 * Math.PI); ctx.fill();
+
+        // ★ 装饰 2：汇聚点小圆点
+        ctx.beginPath(); ctx.arc(xDown, yConverge, 3, 0, 2 * Math.PI); ctx.fill();
+      })(wi);
+    }
+
+    // ★ 汇聚后：一根粗紫色线（从左到右，到 MCU）
+    ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 6;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(downStartX, yConverge);
+    ctx.lineTo(endX, yConverge);
+    ctx.stroke();
+
+    // ★ 汇聚线末端：小箭头（指向 MCU）
+    arrow(ctx, endX - 12, yConverge, endX, yConverge, '#d2a8ff', 6, 8);
+
+    // ★ 汇聚线末端：小圆点（MCU 触点）
+    ctx.fillStyle = '#d2a8ff';
+    ctx.beginPath(); ctx.arc(endX, yConverge, 4, 0, 2 * Math.PI); ctx.fill();
+
+    // 标签：放在"起点上方"（编码器底部 → 起点之间）
+    ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    for (var li = 0; li < N; li++) {
+      var xDown2 = downStartX + li * wireGap;
+      ctx.fillStyle = wires[li].color;
+      // 起点正上方，起点是 downStartY，标签在它上面 8px
+      ctx.fillText(wires[li].label, xDown2, downStartY - 8);
+    }
+    ctx.textAlign = 'start';
+
+    ctx.fillStyle = '#d2a8ff'; ctx.font = 'bold 11px sans-serif';
+    var modeLabel = state.encMode === 'inc6' ? '增量式编码器（6 线）' : '绝对式编码器（4 线）';
+    ctx.fillText(modeLabel, endX + 20, baseDownY + N * wireGap + 16);
+
+    var spinX2 = downStartX + ((Math.sin(state.t * 4) + 1) / 2) * (endX - downStartX);
+    var spinY2 = baseDownY + 3 * wireGap;
+    ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(spinX2, spinY2 - 15, 6, 0, 1.5 * Math.PI); ctx.stroke();
+  }
+
+  // 更新数值
+  var ld = state.lastData;
+  if (ld) {
+    $('d-wref').textContent = ld.w_ref.toFixed(3);
+    $('d-wact').textContent = ld.omega.toFixed(3);
+    $('d-theta').textContent = ((ld.theta_e * 180 / Math.PI) % 360).toFixed(1) + 'deg';
+    $('d-vdc').textContent = state.Vdc.toFixed(3);
+    $('d-idc').textContent = ld.Idc.toFixed(3);
+    $('d-ia').textContent = ld.ia.toFixed(3);
+    $('d-ib').textContent = ld.ib.toFixed(3);
+    $('d-ic').textContent = ld.ic.toFixed(3);
+    $('d-id').textContent = ld.id.toFixed(3);
+    $('d-iq').textContent = ld.iq.toFixed(3);
+    $('d-te').textContent = ld.Te.toFixed(3);
+    $('d-time').textContent = state.t.toFixed(2) + ' s';
+  }
+}
+
+window.addEventListener('load', function () { resetSim(); drawAll(); });
+window.addEventListener('resize', function () { setTimeout(drawAll, 120); });
+
+var lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  var now = performance.now();
+  var realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  var steps = Math.max(1, Math.round(realDt / state.dt));
+  for (var k = 0; k < steps; k++) {
+    state.t += state.dt;
+    stepOnce();
+  }
+
+  drawAll();
+  requestAnimationFrame(loop);
+}
+
+resetSim();
+drawAll();
+</script>
+</body>
+</html>

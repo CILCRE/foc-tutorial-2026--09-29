@@ -1,0 +1,354 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>03 · Clarke 变换 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.8; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div style="background:#58a6ff22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">第一部分 · 坐标变换</b><br>
+      3 相 → 2 相（静止坐标）
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="2" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">电流幅值 I <span id="v-I">1.00</span></div>
+    <input type="range" id="s-I" min="0.2" max="1.5" step="0.01" value="1" style="width:100%;">
+
+    <div class="section-title">电频率 f <span id="v-f">1.00 Hz</span></div>
+    <input type="range" id="s-f" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#f85149;">ia</span><span id="v-ia">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">ib</span><span id="v-ib">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">ic</span><span id="v-ic">0.000</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#58a6ff;">iα</span><span id="v-ialpha">0.000</span></div>
+      <div class="row"><span style="color:#d2a8ff;">iβ</span><span id="v-ibeta">0.000</span></div>
+    </div>
+
+    <div class="section-title">变换公式</div>
+    <div class="info-box" style="line-height:2;">
+      <div style="color:#58a6ff;">iα = ia</div>
+      <div style="color:#d2a8ff;">iβ = (ia + 2·ib) / √3</div>
+      <div style="color:#7d8590;margin-top:6px;">化简：iα + iβ 是三相电流的等效</div>
+    </div>
+
+    <div class="hint">
+      Clarke 变换把 3 个电流（ia/ib/ic）降成 2 个（iα/iβ）。<br>
+      因为 ia+ib+ic=0，三个量其实只有两个自由度——用两个正交分量就能完全描述。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-vec" data-fit="380"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">变换前 · 三相电流 (ia, ib, ic)</div>
+      <canvas id="cv-wave-abc" data-fit="150"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">变换后 · 两相静止 (iα, iβ)</div>
+      <canvas id="cv-wave-ab" data-fit="150"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>三相电流其实只有<b>两个自由度</b>（因为 ia+ib+ic=0），所以可以用两个正交分量
+  <span style="font-family:monospace;color:#d2a8ff;">iα、iβ</span> 完全描述。
+  Clarke 变换就是把 (a,b,c) 投影到静止的 α-β 平面：
+  <span style="font-family:monospace;color:#d2a8ff;">iα = ia，iβ = (ia + 2·ib)/√3</span>。
+  变换后，三个脉振矢量合成的旋转矢量<b>不变</b>，但坐标从三维降到二维——这是 FOC 的第一步化简。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+const state = { t: 0, I: 1, f: 1, speed: 0.5, playing: false };
+
+const $ = id => document.getElementById(id);
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-I').oninput = e => { state.I = +e.target.value; $('v-I').textContent = state.I.toFixed(2); draw(); };
+$('s-f').oninput = e => { state.f = +e.target.value; $('v-f').textContent = state.f.toFixed(2)+' Hz'; syncTimeRange(); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+function waveTimeMax(f) { return Math.max(1, 2/f); }
+function syncTimeRange() {
+  const tMax = waveTimeMax(state.f);
+  $('s-t').max = tMax;
+  if (state.t > tMax) state.t = tMax;
+}
+
+function phaseCurrents(t, I, f) {
+  const th = 2 * Math.PI * f * t;
+  return {
+    ia: I * Math.cos(th),
+    ib: I * Math.cos(th - D2R(120)),
+    ic: I * Math.cos(th + D2R(120)),
+    th
+  };
+}
+
+function clarke(ia, ib, ic) {
+  const ialpha = ia;
+  const ibeta  = (ia + 2*ib) / Math.sqrt(3);
+  return { ialpha, ibeta };
+}
+
+const cvV = $('cv-vec'), ctxV = cvV.getContext('2d');
+const cvWA = $('cv-wave-abc'), ctxWA = cvWA.getContext('2d');
+const cvWB = $('cv-wave-ab'), ctxWB = cvWB.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 矢量对比 =====
+function drawVectors() {
+  const W = cvV.clientWidth, H = cvV.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxV.clearRect(0, 0, W, H);
+
+  const gap = 40;
+  const halfW = (W - gap) / 2;
+  const cxA = halfW / 2, cyA = H / 2;
+  const cxB = halfW + gap + halfW / 2, cyB = H / 2;
+  const scale = Math.min(halfW, H) * 0.32;
+
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+  const { ialpha, ibeta } = clarke(ia, ib, ic);
+
+  // 左：三相
+  drawCircleGrid(ctxV, cxA, cyA, scale);
+  drawAxis(ctxV, cxA, cyA, halfW, H);
+
+  const axes = [
+    { name: 'A', ang: 0,   color: '#f85149', i: ia },
+    { name: 'B', ang: 120, color: '#3fb950', i: ib },
+    { name: 'C', ang: 240, color: '#d29922', i: ic },
+  ];
+  axes.forEach(a => {
+    const rad = D2R(a.ang);
+    ctxV.setLineDash([4,4]); ctxV.strokeStyle = a.color + '40';
+    ctxV.beginPath(); ctxV.moveTo(cxA, cyA);
+    ctxV.lineTo(cxA + Math.cos(rad)*scale*1.5, cyA - Math.sin(rad)*scale*1.5);
+    ctxV.stroke(); ctxV.setLineDash([]);
+    ctxV.fillStyle = a.color; ctxV.font = '12px sans-serif';
+    ctxV.fillText(a.name,
+      cxA + Math.cos(rad)*scale*1.6 - 4,
+      cyA - Math.sin(rad)*scale*1.6 + 4);
+    arrow(ctxV, cxA, cyA,
+      cxA + Math.cos(rad)*a.i*scale,
+      cyA - Math.sin(rad)*a.i*scale,
+      a.color, 2.5, 8);
+  });
+
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('三相 (a, b, c)', cxA - 40, 20);
+
+  // 中间箭头
+  const arrowX = halfW + gap/2;
+  ctxV.strokeStyle = '#58a6ff'; ctxV.lineWidth = 2;
+  ctxV.beginPath(); ctxV.moveTo(arrowX - 12, H/2); ctxV.lineTo(arrowX + 12, H/2); ctxV.stroke();
+  ctxV.beginPath();
+  ctxV.moveTo(arrowX + 12, H/2);
+  ctxV.lineTo(arrowX + 4, H/2 - 5);
+  ctxV.lineTo(arrowX + 4, H/2 + 5);
+  ctxV.closePath(); ctxV.fillStyle = '#58a6ff'; ctxV.fill();
+  ctxV.font = '11px sans-serif'; ctxV.fillStyle = '#58a6ff';
+  ctxV.fillText('Clarke', arrowX - 20, H/2 - 12);
+
+  // 右：α-β
+  drawCircleGrid(ctxV, cxB, cyB, scale);
+  drawAxis(ctxV, cxB, cyB, halfW, H);
+
+  ctxV.fillStyle = '#58a6ff'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('α', cxB + scale*1.5 + 4, cyB + 4);
+  ctxV.fillText('β', cxB + 4, cyB - scale*1.5 - 4);
+
+  arrow(ctxV, cxB, cyB, cxB + ialpha*scale, cyB, '#58a6ff', 2.5, 8);
+  arrow(ctxV, cxB, cyB, cxB, cyB - ibeta*scale, '#d2a8ff', 2.5, 8);
+
+  const ex2 = cxB + ialpha*scale;
+  const ey2 = cyB - ibeta*scale;
+  arrow(ctxV, cxB, cyB, ex2, ey2, '#f0f6fc', 3.5, 11);
+  ctxV.fillStyle = '#f0f6fc'; ctxV.font = 'bold 13px sans-serif';
+  ctxV.fillText('合成', ex2 + 8, ey2 - 4);
+
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('α-β (静止两相)', cxB - 50, 20);
+
+  ctxV.font = '12px monospace'; ctxV.fillStyle = '#7d8590';
+  ctxV.fillText('iα = ' + ialpha.toFixed(3), cxB - halfW/2 + 10, H - 30);
+  ctxV.fillText('iβ = ' + ibeta.toFixed(3),  cxB - halfW/2 + 10, H - 12);
+}
+
+function drawCircleGrid(ctx, cx, cy, scale) {
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let r = 1; r <= 4; r++) {
+    ctx.beginPath(); ctx.arc(cx, cy, scale*r/2, 0, 2*Math.PI); ctx.stroke();
+  }
+}
+function drawAxis(ctx, cx, cy, w, h) {
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - w*0.45, cy); ctx.lineTo(cx + w*0.45, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - h*0.4); ctx.lineTo(cx, cy + h*0.4); ctx.stroke();
+}
+
+// ===== 通用波形 =====
+function drawWaveCanvas(ctx, cv, curves, ampScale) {
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+  const pad = 30, midY = H/2;
+  const tMax = waveTimeMax(state.f);
+
+  ctx.strokeStyle = '#30363d';
+  ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(W-pad, midY); ctx.stroke();
+
+  ctx.fillStyle = '#7d8590'; ctx.font = '10px sans-serif';
+  for (let k = 0; k <= 4; k++) {
+    const x = pad + (W-2*pad) * k/4;
+    ctx.fillText((k*tMax/4).toFixed(2)+'s', x-14, H-6);
+  }
+
+  const xNow = pad + (W-2*pad) * (state.t / tMax);
+  const amp = (H/2 - 20) * (ampScale || 1);
+
+  curves.forEach(cur => {
+    ctx.strokeStyle = cur.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let px = 0; px <= W-2*pad; px++) {
+      const tt = (px / (W-2*pad)) * tMax;
+      const val = cur.fn(tt);
+      const x = pad + px, y = midY - val * amp;
+      if (px === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  curves.forEach(cur => {
+    const val = cur.fn(state.t);
+    const y = midY - val * amp;
+    ctx.fillStyle = cur.color;
+    ctx.beginPath(); ctx.arc(xNow, y, 4, 0, 2*Math.PI); ctx.fill();
+  });
+
+  ctx.strokeStyle = '#58a6ff'; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xNow, 6); ctx.lineTo(xNow, H-6); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = '11px sans-serif';
+  let lx = pad + 6;
+  curves.forEach(cur => {
+    ctx.fillStyle = cur.color;
+    ctx.fillText(cur.label, lx, 14);
+    lx += 34;
+  });
+}
+
+function drawWaveABC() {
+  const { I, f } = state;
+  const curves = [
+    { color: '#f85149', label: 'ia', fn: t => I * Math.cos(2*Math.PI*f*t) },
+    { color: '#3fb950', label: 'ib', fn: t => I * Math.cos(2*Math.PI*f*t - D2R(120)) },
+    { color: '#d29922', label: 'ic', fn: t => I * Math.cos(2*Math.PI*f*t + D2R(120)) },
+  ];
+  drawWaveCanvas(ctxWA, cvWA, curves, 1);
+}
+
+function drawWaveAB() {
+  const { I, f } = state;
+  const curves = [
+    { color: '#58a6ff', label: 'iα', fn: t => {
+      const th = 2*Math.PI*f*t;
+      const ia = I*Math.cos(th), ib = I*Math.cos(th - D2R(120)), ic = I*Math.cos(th + D2R(120));
+      return clarke(ia, ib, ic).ialpha;
+    }},
+    { color: '#d2a8ff', label: 'iβ', fn: t => {
+      const th = 2*Math.PI*f*t;
+      const ia = I*Math.cos(th), ib = I*Math.cos(th - D2R(120)), ic = I*Math.cos(th + D2R(120));
+      return clarke(ia, ib, ic).ibeta;
+    }},
+  ];
+  drawWaveCanvas(ctxWB, cvWB, curves, 1);
+}
+
+function draw() { drawVectors(); drawWaveABC(); drawWaveAB(); }
+
+window.addEventListener('load', () => { syncTimeRange(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = waveTimeMax(state.f);
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+
+  // 更新数值
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+  const { ialpha, ibeta } = clarke(ia, ib, ic);
+  $('v-ia').textContent = ia.toFixed(3);
+  $('v-ib').textContent = ib.toFixed(3);
+  $('v-ic').textContent = ic.toFixed(3);
+  $('v-ialpha').textContent = ialpha.toFixed(3);
+  $('v-ibeta').textContent = ibeta.toFixed(3);
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+syncTimeRange();
+draw();
+</script>
+</body>
+</html>

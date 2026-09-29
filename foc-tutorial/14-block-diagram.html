@@ -1,0 +1,263 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>14 · 控制框图 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #30363d; }
+  .tab { padding: 8px 16px; background: transparent; color: #7d8590; border: none; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; font-size: 14px; }
+  .tab:hover { color: #e6edf3; background: transparent; }
+  .tab.active { color: #3fb950; border-bottom-color: #3fb950; background: transparent; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 280px 1fr;">
+  <div class="panel">
+    <h3>控制框图</h3>
+
+    <div style="background:#3fb95022;border-left:3px solid #3fb950;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#3fb950;">第三部分 · 控制</b><br>
+      FOC 全流程一图看懂
+    </div>
+
+    <div class="section-title">目录</div>
+    <div class="info-box">
+      <div>① <a href="#f1" style="color:#3fb950;text-decoration:none;">FOC 双闭环完整框图</a></div>
+      <div>② <a href="#f2" style="color:#3fb950;text-decoration:none;">信号流向</a></div>
+      <div>③ <a href="#f3" style="color:#3fb950;text-decoration:none;">三个环</a></div>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">三个环</div>
+    <div class="info-box" style="line-height:2;">
+      <div><span style="color:#58a6ff;">① 电流环</span>（内环，最快）</div>
+      <div><span style="color:#d2a8ff;">② 速度环</span>（中环，中速）</div>
+      <div><span style="color:#f0b429;">③ 位置环</span>（外环，最慢）</div>
+      <div style="margin-top:6px;color:#7d8590;">本项目主要讲前两个</div>
+    </div>
+
+    <div class="section-title">关键信号</div>
+    <div class="info-box" style="line-height:2;">
+      <div><span style="color:#f85149;">ia/ib/ic</span>：三相电流</div>
+      <div><span style="color:#3fb950;">id/iq</span>：旋转两相电流</div>
+      <div><span style="color:#d2a8ff;">vd*/vq*</span>：d-q 电压指令</div>
+      <div><span style="color:#58a6ff;">vα/vβ</span>：静止电压矢量</div>
+      <div><span style="color:#f0b429;">6 路 PWM</span>：开关信号</div>
+    </div>
+
+    <div class="hint">
+      <b>FOC 核心：</b>把三相交流电机等效成直流电机控制。<br>
+      <br>
+      <b>三环嵌套：</b>电流环在最内（快），速度环在外（中），位置环最外（慢）。内环快，外环慢——外环带宽 < 内环带宽 / 5。
+    </div>
+  </div>
+
+  <div>
+    <!-- 双闭环框图 -->
+    <div class="stage" id="f1">
+      <div class="section-title" style="margin-top:0;">① FOC 双闭环完整框图</div>
+      <canvas id="cv-block" data-fit="420"></canvas>
+    </div>
+
+    <!-- 信号流向 -->
+    <div class="stage" id="f2" style="margin-top:16px;">
+      <div class="section-title" style="margin-top:0;">② 信号流向（10 步）</div>
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:16px;overflow-x:auto;">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;font-family:monospace;font-size:12px;line-height:1.9;color:#c9d1d9;">
+          <div><span style="color:#3fb950;font-weight:bold;">1.</span> 采样三相电流 <span style="color:#f85149;">ia/ib/ic</span></div>
+          <div><span style="color:#3fb950;font-weight:bold;">2.</span> <span style="color:#58a6ff;">Clarke</span>：3 相 → 2 相 (iα/iβ)</div>
+          <div><span style="color:#3fb950;font-weight:bold;">3.</span> <span style="color:#d2a8ff;">Park</span>（用 θ）：iα/iβ → id/iq</div>
+          <div><span style="color:#3fb950;font-weight:bold;">4.</span> <span style="color:#3fb950;">速度环 PI</span>：ω_ref−ω → iq_ref</div>
+          <div><span style="color:#3fb950;font-weight:bold;">5.</span> <span style="color:#3fb950;">电流环 PI</span>：id/iq 跟踪 → vd*/vq*</div>
+          <div><span style="color:#3fb950;font-weight:bold;">6.</span> <span style="color:#d2a8ff;">逆 Park</span>（用 θ）：vd*/vq* → vα/vβ</div>
+          <div><span style="color:#3fb950;font-weight:bold;">7.</span> <span style="color:#f0b429;">SVPWM</span>：vα/vβ → 6 路 PWM</div>
+          <div><span style="color:#3fb950;font-weight:bold;">8.</span> 逆变器 → 电机</div>
+          <div><span style="color:#3fb950;font-weight:bold;">9.</span> 编码器 → θ, ω（反馈）</div>
+          <div><span style="color:#3fb950;font-weight:bold;">10.</span> 回到 1，循环往复</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 三个环 -->
+    <div class="stage" id="f3" style="margin-top:16px;">
+      <div class="section-title" style="margin-top:0;">③ 三个环（带宽从内到外递减）</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+
+        <div style="background:#0d1117;border:1px solid #58a6ff;border-radius:6px;padding:16px;">
+          <div style="color:#58a6ff;font-weight:bold;font-size:14px;margin-bottom:8px;">① 电流环</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.9;">
+            <div><b style="color:#7d8590;">位置</b>：内环</div>
+            <div><b style="color:#7d8590;">频率</b>：~10 kHz</div>
+            <div><b style="color:#7d8590;">输入</b>：id_ref, iq_ref</div>
+            <div><b style="color:#7d8590;">反馈</b>：id, iq</div>
+            <div><b style="color:#7d8590;">输出</b>：vd*, vq*</div>
+            <div style="margin-top:6px;color:#58a6ff;">PI 参数：Kp_d, Ki_d, Kp_q, Ki_q</div>
+          </div>
+        </div>
+
+        <div style="background:#0d1117;border:1px solid #d2a8ff;border-radius:6px;padding:16px;">
+          <div style="color:#d2a8ff;font-weight:bold;font-size:14px;margin-bottom:8px;">② 速度环</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.9;">
+            <div><b style="color:#7d8590;">位置</b>：中环</div>
+            <div><b style="color:#7d8590;">频率</b>：~1 kHz</div>
+            <div><b style="color:#7d8590;">输入</b>：ω_ref</div>
+            <div><b style="color:#7d8590;">反馈</b>：ω</div>
+            <div><b style="color:#7d8590;">输出</b>：iq_ref</div>
+            <div style="margin-top:6px;color:#d2a8ff;">PI 参数：Kp_w, Ki_w</div>
+          </div>
+        </div>
+
+        <div style="background:#0d1117;border:1px solid #f0b429;border-radius:6px;padding:16px;">
+          <div style="color:#f0b429;font-weight:bold;font-size:14px;margin-bottom:8px;">③ 位置环</div>
+          <div style="font-size:11px;color:#c9d1d9;line-height:1.9;">
+            <div><b style="color:#7d8590;">位置</b>：外环</div>
+            <div><b style="color:#7d8590;">频率</b>：~100 Hz</div>
+            <div><b style="color:#7d8590;">输入</b>：θ_ref</div>
+            <div><b style="color:#7d8590;">反馈</b>：θ</div>
+            <div><b style="color:#7d8590;">输出</b>：ω_ref</div>
+            <div style="margin-top:6px;color:#f0b429;">本项目未涉及</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:14px;font-size:12px;color:#c9d1d9;line-height:1.9;">
+        <b style="color:#3fb950;">为什么内环快、外环慢？</b><br>
+        外环的输出是内环的输入（速度环输出 iq_ref，是电流环的目标）。如果两个环一样快，
+        它们会互相干扰、震荡。所以内环带宽通常要<b>比外环快 5~10 倍</b>——
+        这样内环能"瞬间"跟踪外环的指令，外环就"看"不到内环的动态。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>FOC 控制框图：</b>这是一个典型的<b>双闭环</b>结构：内环是<b>电流环</b>，外环是<b>速度环</b>。
+  信号流从"采样三相电流"出发，经过 Clarke → Park → 双环 PI → 逆 Park → SVPWM → 逆变器 → 电机，
+  同时编码器反馈 θ/ω、电流采样反馈 id/iq——形成闭环。<br>
+  更完整的系统还有<b>位置环</b>（最外环），但本教程重点讲电流环和速度环。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const cvBlock = document.getElementById('cv-block');
+const ctx = cvBlock.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawBlock() {
+  const W = cvBlock.clientWidth, H = cvBlock.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  // 两层：上 = 正向通道；下 = 反馈
+  const boxW = 90, boxH = 50;
+  const gap = 24;
+  const totalW = boxW * 7 + gap * 6;
+  const startX = (W - totalW) / 2;
+  const y = H / 2 - boxH / 2 - 30;
+
+  const blocks = [
+    { name: 'Clarke',  sub: '3→2',    color: '#58a6ff' },
+    { name: 'Park',    sub: '用 θ',   color: '#d2a8ff' },
+    { name: '速度环',  sub: 'PI',     color: '#3fb950' },
+    { name: '电流环',  sub: 'PI ×2',  color: '#3fb950' },
+    { name: '逆 Park', sub: '用 θ',   color: '#d2a8ff' },
+    { name: 'SVPWM',   sub: '6 路',   color: '#f0b429' },
+    { name: '逆变器+电机', sub: 'PMSM', color: '#f85149' },
+  ];
+
+  blocks.forEach((b, i) => {
+    const x = startX + i * (boxW + gap);
+    ctx.fillStyle = b.color + '22';
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth = 2;
+    ctx.fillRect(x, y, boxW, boxH);
+    ctx.strokeRect(x, y, boxW, boxH);
+
+    ctx.fillStyle = b.color;
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.name, x + boxW/2, y + boxH/2 - 3);
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#7d8590';
+    ctx.fillText(b.sub, x + boxW/2, y + boxH/2 + 13);
+    ctx.textAlign = 'start';
+
+    if (i < blocks.length - 1) {
+      arrow(ctx, x + boxW, y + boxH/2, x + boxW + gap, y + boxH/2, '#7d8590', 1.5, 6);
+    }
+  });
+
+  // 输入端
+  const inX = startX - 20;
+  ctx.fillStyle = '#3fb950';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('ia,ib,ic', inX + 12, y + boxH/2 - 8);
+  ctx.fillStyle = '#7d8590';
+  ctx.fillText('ω_ref', inX + 12, y + boxH/2 + 12);
+  ctx.textAlign = 'start';
+
+  // 反馈线（从右回左）
+  const lastX = startX + 6 * (boxW + gap) + boxW/2;
+  const firstX = startX + boxW/2;
+  const fbY = y + boxH + 60;
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5,3]);
+  ctx.beginPath();
+  ctx.moveTo(lastX, y + boxH);
+  ctx.lineTo(lastX, fbY);
+  ctx.lineTo(firstX, fbY);
+  ctx.lineTo(firstX, y + boxH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 反馈标签
+  ctx.fillStyle = '#58a6ff';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('θ, ω（编码器）  /  id, iq（电流采样）', W/2, fbY + 16);
+  ctx.textAlign = 'start';
+
+  // 顶部标题
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('FOC 双闭环：电流环（内）+ 速度环（外）', 12, 24);
+}
+
+window.addEventListener('load', () => { drawBlock(); });
+window.addEventListener('resize', () => setTimeout(drawBlock, 120));
+drawBlock();
+
+// 锚点平滑滚动
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.onclick = e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+});
+</script>
+</body>
+</html>

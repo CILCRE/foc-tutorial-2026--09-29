@@ -1,0 +1,362 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>10 · 扇区判断 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .sec-list { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:8px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .sec-list .item { display:flex; justify-content:space-between; padding:3px 8px; border-radius:4px; }
+  .sec-list .item.active { background:#1f6feb22; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>扇区判断</h3>
+
+    <div style="background:#f0b42922;border-left:3px solid #f0b429;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f0b429;">第二部分 · SVPWM</b><br>
+      Vref 落在哪个扇区？
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="4" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">矢量幅值 |Vref| <span id="v-mag">0.50</span></div>
+    <input type="range" id="s-mag" min="0.1" max="0.9" step="0.01" value="0.5" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#58a6ff;">vα</span><span id="v-valpha">0.000</span></div>
+      <div class="row"><span style="color:#d2a8ff;">vβ</span><span id="v-vbeta">0.000</span></div>
+      <div class="row"><span style="color:#f0b429;">θ</span><span id="v-theta">0.0°</span></div>
+      <div class="row"><span style="color:#3fb950;">扇区</span><span id="v-sector" style="font-weight:bold;font-size:13px;">1</span></div>
+    </div>
+
+    <div class="section-title">6 个扇区</div>
+    <div class="sec-list" id="sec-list">
+      <div class="item" data-s="1"><span>扇区 1</span><span style="color:#7d8590;">0° ~ 60°</span></div>
+      <div class="item" data-s="2"><span>扇区 2</span><span style="color:#7d8590;">60° ~ 120°</span></div>
+      <div class="item" data-s="3"><span>扇区 3</span><span style="color:#7d8590;">120° ~ 180°</span></div>
+      <div class="item" data-s="4"><span>扇区 4</span><span style="color:#7d8590;">180° ~ 240°</span></div>
+      <div class="item" data-s="5"><span>扇区 5</span><span style="color:#7d8590;">240° ~ 300°</span></div>
+      <div class="item" data-s="6"><span>扇区 6</span><span style="color:#7d8590;">300° ~ 360°</span></div>
+    </div>
+
+    <div class="section-title" style="margin-top:16px;">判断公式</div>
+    <div class="info-box" style="line-height:2;">
+      <div style="color:#58a6ff;">θ = atan2(vβ, vα)</div>
+      <div style="color:#58a6ff;">θ &lt; 0 → θ += 2π</div>
+      <div style="color:#3fb950;">扇区 = ⌊θ / (π/3)⌋ + 1</div>
+    </div>
+
+    <div class="hint">
+      <b>扇区 = 60° 区间</b>。Vref 落在哪个 60° 区间，就用那两个相邻的基本矢量来合成它。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="540"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>扇区判断：</b>六边形被分为 6 个扇形（sector），每个 60°。<br>
+  给定 Vref 后，先用 <b>atan2(vβ, vα)</b> 求出它的角度 θ（-π~π），
+  归一化到 0~2π，然后 <b>扇区 = ⌊θ / (π/3)⌋ + 1</b>。<br>
+  落在哪个扇区，就用该扇区的两个相邻基本矢量（V1~V6 中相邻的两个）来合成 Vref。<br>
+  例：Vref 在 30°（扇区 1）→ 用 V1(0°) 和 V2(60°) 合成。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const BASE_VECTORS = [
+  { id: 1, angDeg:   0, bits: '100' },
+  { id: 2, angDeg:  60, bits: '110' },
+  { id: 3, angDeg: 120, bits: '010' },
+  { id: 4, angDeg: 180, bits: '011' },
+  { id: 5, angDeg: 240, bits: '001' },
+  { id: 6, angDeg: 300, bits: '101' },
+];
+
+// 每个扇区的两个相邻矢量
+const SECTOR_NEIGHBORS = {
+  1: [1, 2], 2: [2, 3], 3: [3, 4],
+  4: [4, 5], 5: [5, 6], 6: [6, 1],
+};
+
+// 扇区颜色
+const SECTOR_COLORS = {
+  1: '#58a6ff', 2: '#3fb950', 3: '#d29922',
+  4: '#f85149', 5: '#d2a8ff', 6: '#f0b429',
+};
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 0.5,
+  mag: 0.5,
+};
+
+const $ = id => document.getElementById(id);
+
+// ===== 事件 =====
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-mag').oninput = e => { state.mag = +e.target.value; $('v-mag').textContent = state.mag.toFixed(2); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+$('btn-reset').onclick = () => {
+  state.t = 0;
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 播放动画';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+// ===== 当前 Vref =====
+function getVref(t) {
+  const omega = 2 * Math.PI * 0.25;   // 0.25 Hz 转一圈 4 秒
+  const th = t * omega;
+  return {
+    valpha: state.mag * Math.cos(th),
+    vbeta:  state.mag * Math.sin(th),
+    theta: th,
+  };
+}
+
+// ===== 判扇区 =====
+function judgeSector(valpha, vbeta) {
+  let angle = Math.atan2(vbeta, valpha);
+  if (angle < 0) angle += 2 * Math.PI;
+  return Math.floor(angle / (Math.PI / 3)) + 1;
+}
+
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function draw() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  const { valpha, vbeta, theta } = getVref(state.t);
+  const sector = judgeSector(valpha, vbeta);
+
+  // ===== 左：六边形扇区图 =====
+  const cx = W * 0.42;
+  const cy = H / 2;
+  const r = Math.min(W * 0.4, H) * 0.36;
+
+  // 6 个扇区填充（用扇形近似）
+  for (let s = 1; s <= 6; s++) {
+    const startDeg = (s - 1) * 60;
+    const endDeg = s * 60;
+    const startRad = -startDeg * RAD;
+    const endRad = -endDeg * RAD;
+
+    const isActive = (s === sector);
+    ctx.fillStyle = isActive ? SECTOR_COLORS[s] + '44' : '#21262d33';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startRad, endRad, true);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // 六边形轮廓
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  BASE_VECTORS.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.closePath(); ctx.stroke();
+
+  // 6 个基本矢量（暗色）
+  BASE_VECTORS.forEach(v => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+    // 箭头
+    const ang = Math.atan2(y - cy, x - cx);
+    ctx.fillStyle = '#484f58';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - 7*Math.cos(ang - 0.4), y - 7*Math.sin(ang - 0.4));
+    ctx.lineTo(x - 7*Math.cos(ang + 0.4), y - 7*Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+    // 标签
+    ctx.fillStyle = '#7d8590'; ctx.font = '11px sans-serif';
+    ctx.fillText('V' + v.id, x + 8, y + 4);
+  });
+
+  // 扇区编号（在扇形中心）
+  for (let s = 1; s <= 6; s++) {
+    const midDeg = (s - 0.5) * 60;
+    const rad = D2R(midDeg);
+    const rr = r * 0.7;
+    const x = cx + Math.cos(rad) * rr;
+    const y = cy - Math.sin(rad) * rr;
+    const isActive = (s === sector);
+    ctx.fillStyle = isActive ? SECTOR_COLORS[s] : '#484f58';
+    ctx.font = isActive ? 'bold 16px sans-serif' : '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(s), x, y + 5);
+    ctx.textAlign = 'start';
+  }
+
+  // Vref 矢量
+  const vNorm = 2 / 1.0;   // Vdc 固定为 1.0
+  const sx = cx + valpha * vNorm * r;
+  const sy = cy - vbeta * vNorm * r;
+  arrow(ctx, cx, cy, sx, sy, SECTOR_COLORS[sector], 4, 12);
+
+  // Vref 末端小圆点
+  ctx.fillStyle = SECTOR_COLORS[sector];
+  ctx.beginPath(); ctx.arc(sx, sy, 5, 0, 2*Math.PI); ctx.fill();
+  ctx.strokeStyle = '#0f1720'; ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 原点
+  ctx.fillStyle = '#e6edf3';
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2*Math.PI); ctx.fill();
+
+  // ===== 右：判断过程可视化 =====
+  const rx = W * 0.78;
+  const ry = H / 2;
+  drawJudgeProcess(rx, ry, valpha, vbeta, theta, sector);
+
+  // 更新 UI
+  $('v-valpha').textContent = valpha.toFixed(3);
+  $('v-vbeta').textContent = vbeta.toFixed(3);
+  const thetaDeg = ((theta * 180 / Math.PI) % 360 + 360) % 360;
+  $('v-theta').textContent = thetaDeg.toFixed(1) + '°';
+  $('v-sector').textContent = sector;
+
+  // 更新侧栏扇区列表
+  document.querySelectorAll('.sec-list .item').forEach(el => {
+    const s = +el.dataset.s;
+    el.classList.toggle('active', s === sector);
+    if (s === sector) {
+      el.style.color = SECTOR_COLORS[s];
+    } else {
+      el.style.color = '';
+    }
+  });
+}
+
+// ===== 右侧：判断过程 =====
+function drawJudgeProcess(cx, cy, valpha, vbeta, theta, sector) {
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('判断过程', cx, cy - 100);
+  ctx.textAlign = 'start';
+
+  // 公式步骤
+  const lines = [
+    { label: 'vα, vβ', value: `(${valpha.toFixed(3)}, ${vbeta.toFixed(3)})`, color: '#58a6ff' },
+    { label: 'θ = atan2(vβ,vα)', value: `${(theta * 180 / Math.PI).toFixed(1)}°`, color: '#58a6ff' },
+    { label: '归一化到 0~2π', value: `${(((theta * 180 / Math.PI) % 360 + 360) % 360).toFixed(1)}°`, color: '#7d8590' },
+    { label: 'θ / 60°', value: `${(((theta * 180 / Math.PI) % 360 + 360) % 360) / 60}`, color: '#7d8590' },
+    { label: '⌊  ⌋ + 1', value: `扇区 ${sector}`, color: SECTOR_COLORS[sector], bold: true },
+  ];
+
+  const startY = cy - 60;
+  const lineH = 32;
+  lines.forEach((line, i) => {
+    const y = startY + i * lineH;
+    // 标签
+    ctx.fillStyle = '#7d8590';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(line.label, cx - 120, y);
+    // 值
+    ctx.fillStyle = line.color;
+    ctx.font = line.bold ? 'bold 14px monospace' : '12px monospace';
+    ctx.fillText(line.value, cx + 10, y);
+  });
+
+  // 当前扇区色块
+  ctx.fillStyle = SECTOR_COLORS[sector];
+  ctx.fillRect(cx - 130, cy + 80, 260, 40);
+  ctx.fillStyle = '#0f1720';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('扇区 ' + sector, cx, cy + 108);
+  ctx.textAlign = 'start';
+}
+
+window.addEventListener('load', () => { draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = 4;
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>

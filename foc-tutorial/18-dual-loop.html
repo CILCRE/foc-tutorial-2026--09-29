@@ -1,0 +1,448 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>18 · 双闭环 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 8px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>双闭环</h3>
+
+    <div style="background:#3fb95022;border-left:3px solid #3fb950;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#3fb950;">第三部分 · 控制</b><br>
+      电流环 + 速度环 嵌套
+    </div>
+
+    <div class="section-title">仿真时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="5" step="0.01" value="0" style="width:100%;">
+
+    <div class="section-title">控制方式</div>
+    <div class="switch-group">
+      <button id="btn-open" class="ctrl-btn">开环</button>
+      <button id="btn-close" class="ctrl-btn on">双闭环</button>
+    </div>
+
+    <div class="section-title">给定转速 ω_ref <span id="v-wref">15.00</span></div>
+    <input type="range" id="s-wref" min="0" max="30" step="0.5" value="15" style="width:100%;">
+
+    <div class="section-title">负载转矩 TL <span id="v-tl">0.00</span></div>
+    <input type="range" id="s-tl" min="0" max="0.5" step="0.01" value="0" style="width:100%;">
+    <div class="switch-group" style="margin-top:6px;">
+      <button id="btn-load-up" style="padding:6px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">+ 加负载</button>
+      <button id="btn-load-zero" style="padding:6px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">归零</button>
+    </div>
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 开始仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#58a6ff;">ω_act</span><span id="d-wact">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">ω_ref</span><span id="d-wref">0.000</span></div>
+      <div class="row"><span style="color:#f0b429;">Δω 静差</span><span id="d-err">0.000</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#d2a8ff;">iq_ref</span><span id="d-iqref">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">iq</span><span id="d-iq">0.000</span></div>
+      <div class="row"><span style="color:#f85149;">Te</span><span id="d-te">0.000</span></div>
+    </div>
+
+    <div class="section-title">双闭环 vs 开环</div>
+    <div class="hint">
+      <b style="color:#3fb950;">双闭环：</b><br>
+      ✓ 转速无静差<br>
+      ✓ 加负载瞬间恢复<br>
+      ✓ id/iq 精确控制<br>
+      <br>
+      <b style="color:#f85149;">开环：</b><br>
+      ✗ 转速有静差<br>
+      ✗ 加负载转速掉<br>
+      ✗ id/iq 漂移<br>
+      <br>
+      点上方按钮切换，对比感受。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="300"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">转速波形</div>
+      <canvas id="cv-wave" data-fit="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>双闭环：</b>FOC 的核心控制结构——<b>速度环（外）+ 电流环（内）</b>。<br>
+  速度环的输出（iq_ref）是电流环的输入，电流环的输出（vd*/vq*）经过逆 Park → SVPWM → 逆变器作用于电机。<br>
+  <b>对比开环</b>：切到"开环"按钮，同样加负载，开环转速会掉、有静差；双闭环转速瞬间恢复、无静差。<br>
+  <b>关键</b>：内环（电流）带宽要比外环（速度）快 5~10 倍，否则两环会互相干扰震荡。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 1.0,
+  controlMode: 'closed',
+  w_ref: 15,
+  TL: 0,
+  Kp_w: 0.5, Ki_w: 2.0,
+  Kp_c: 10, Ki_c: 200,
+  motor: null,
+  pi_w: null, pi_d: null, pi_q: null,
+  history: [],
+  dt: 0.0005,
+  lastData: null,
+};
+
+const $ = id => document.getElementById(id);
+
+function resetSim() {
+  state.motor = FOC_MOTOR.createState();
+  state.pi_w = FOC_MOTOR.createPIController(state.Kp_w, state.Ki_w);
+  state.pi_d = FOC_MOTOR.createPIController(state.Kp_c, state.Ki_c);
+  state.pi_q = FOC_MOTOR.createPIController(state.Kp_c, state.Ki_c);
+  state.t = 0;
+  state.history = [];
+  state.lastData = { omega: 0, w_ref: state.w_ref, iq_ref: 0, iq: 0, Te: 0, TL: state.TL };
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+}
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-wref').oninput = e => { state.w_ref = +e.target.value; $('v-wref').textContent = state.w_ref.toFixed(2); };
+$('s-tl').oninput = e => { state.TL = +e.target.value; $('v-tl').textContent = state.TL.toFixed(2); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-load-up').onclick = () => {
+  state.TL = Math.min(0.5, state.TL + 0.15);
+  $('s-tl').value = state.TL;
+  $('v-tl').textContent = state.TL.toFixed(2);
+};
+$('btn-load-zero').onclick = () => {
+  state.TL = 0;
+  $('s-tl').value = 0;
+  $('v-tl').textContent = '0.00';
+};
+
+$('btn-open').onclick = () => setControl('open');
+$('btn-close').onclick = () => setControl('closed');
+
+function setControl(m) {
+  state.controlMode = m;
+  $('btn-open').classList.toggle('on', m === 'open');
+  $('btn-close').classList.toggle('on', m === 'closed');
+  $('btn-open').style.background = m === 'open' ? '#1f6feb' : '#21262d';
+  $('btn-open').style.color = m === 'open' ? '#fff' : '#7d8590';
+  $('btn-open').style.borderColor = m === 'open' ? '#1f6feb' : '#30363d';
+  $('btn-close').style.background = m === 'closed' ? '#1f6feb' : '#21262d';
+  $('btn-close').style.color = m === 'closed' ? '#fff' : '#7d8590';
+  $('btn-close').style.borderColor = m === 'closed' ? '#1f6feb' : '#30363d';
+  resetSim();
+  draw();
+}
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 开始仿真';
+};
+
+$('btn-reset').onclick = () => {
+  resetSim();
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 开始仿真';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+// ===== 仿真一步 =====
+function stepOnce() {
+  const dt = state.dt;
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  const m = state.motor;
+
+  if (state.controlMode === 'closed') {
+    // 双闭环
+    const e_w = state.w_ref - m.omega_m;
+    const iq_ref = FOC_MOTOR.stepPI(state.pi_w, e_w, dt, 1.5);
+    const id_ref = 0;
+    const e_id = id_ref - m.id;
+    const e_iq = iq_ref - m.iq;
+    const vd_star = FOC_MOTOR.stepPI(state.pi_d, e_id, dt, 1.0);
+    const vq_star = FOC_MOTOR.stepPI(state.pi_q, e_iq, dt, 1.0);
+
+    const newSt = FOC_MOTOR.stepStandard(m, vd_star, vq_star, state.TL, dt, P);
+    state.motor = newSt;
+
+    state.lastData = {
+      omega: newSt.omega_m, w_ref: state.w_ref,
+      iq_ref: iq_ref, iq: newSt.iq, Te: newSt.Te, TL: state.TL,
+    };
+  } else {
+    // 开环：V/F
+    const f_ref = state.w_ref / (2 * Math.PI) * P.polePairs;
+    const V = Math.min(1.0, 0.05 + 0.1 * f_ref);
+    const theta_cmd = 2 * Math.PI * f_ref * state.t;
+    const vd_cmd = 0, vq_cmd = V;
+    const dTheta = theta_cmd - m.theta_e;
+    const c = Math.cos(dTheta), s = Math.sin(dTheta);
+    const vd_real = vd_cmd * c + vq_cmd * s;
+    const vq_real = -vd_cmd * s + vq_cmd * c;
+    const newSt = FOC_MOTOR.stepStandard(m, vd_real, vq_real, state.TL, dt, P);
+    state.motor = newSt;
+
+    state.lastData = {
+      omega: newSt.omega_m, w_ref: state.w_ref,
+      iq_ref: 0, iq: newSt.iq, Te: newSt.Te, TL: state.TL,
+    };
+  }
+
+  state.history.push({ t: state.t, ...state.lastData });
+}
+
+function trimHistory() {
+  const MAX = 3000;
+  if (state.history.length > MAX) {
+    const thin = [];
+    for (let i = 0; i < state.history.length; i += 2) thin.push(state.history[i]);
+    state.history = thin;
+  }
+}
+
+// ===== 画布 =====
+const cvMain = $('cv-main'), ctxM = cvMain.getContext('2d');
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxM.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const boxW = 100, boxH = 44;
+  const gap = 22;
+  const isClosed = (state.controlMode === 'closed');
+
+  const blocks = isClosed
+    ? [
+        { name: 'ω_ref', sub: '目标', color: '#58a6ff' },
+        { name: '速度环 PI', sub: 'Kp_w+Ki_w', color: '#d2a8ff' },
+        { name: '电流环 PI', sub: 'Kp_c+Ki_c', color: '#3fb950' },
+        { name: '逆 Park', sub: '用 θ', color: '#d2a8ff' },
+        { name: 'SVPWM', sub: '6 路', color: '#f0b429' },
+        { name: '电机', sub: 'PMSM', color: '#3fb950' },
+      ]
+    : [
+        { name: 'ω_ref', sub: '目标', color: '#58a6ff' },
+        { name: '(直接)', sub: '无反馈', color: '#7d8590' },
+        { name: '逆变换', sub: '用 θ_cmd', color: '#d2a8ff' },
+        { name: 'SVPWM', sub: '6 路', color: '#f0b429' },
+        { name: '电机', sub: 'PMSM', color: '#3fb950' },
+      ];
+
+  const totalW = boxW * blocks.length + gap * (blocks.length - 1);
+  const startX = (W - totalW) / 2;
+  const y = cy - boxH/2;
+
+  blocks.forEach((b, i) => {
+    const x = startX + i * (boxW + gap);
+    const isHighlight = (i === 1 || i === 2) && isClosed;
+    ctxM.fillStyle = isHighlight ? b.color + '44' : b.color + '22';
+    ctxM.strokeStyle = b.color;
+    ctxM.lineWidth = isHighlight ? 2.5 : 1.5;
+    ctxM.fillRect(x, y, boxW, boxH);
+    ctxM.strokeRect(x, y, boxW, boxH);
+    ctxM.fillStyle = b.color;
+    ctxM.font = 'bold 12px sans-serif';
+    ctxM.textAlign = 'center';
+    ctxM.fillText(b.name, x + boxW/2, y + boxH/2 - 2);
+    ctxM.font = '10px sans-serif';
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText(b.sub, x + boxW/2, y + boxH/2 + 14);
+    ctxM.textAlign = 'start';
+
+    if (i < blocks.length - 1) {
+      const ax1 = x + boxW, ax2 = x + boxW + gap;
+      const ay = y + boxH/2;
+      ctxM.strokeStyle = '#7d8590'; ctxM.lineWidth = 1.5;
+      ctxM.beginPath(); ctxM.moveTo(ax1, ay); ctxM.lineTo(ax2, ay); ctxM.stroke();
+      ctxM.fillStyle = '#7d8590';
+      ctxM.beginPath();
+      ctxM.moveTo(ax2, ay);
+      ctxM.lineTo(ax2 - 6*Math.cos(-0.4), ay - 6*Math.sin(-0.4));
+      ctxM.lineTo(ax2 - 6*Math.cos(0.4), ay - 6*Math.sin(0.4));
+      ctxM.closePath(); ctxM.fill();
+    }
+  });
+
+  // 反馈线
+  const lastX = startX + (blocks.length - 1) * (boxW + gap) + boxW/2;
+  const firstX = startX + boxW/2;
+  const fbY = y + boxH + 60;
+  ctxM.strokeStyle = isClosed ? '#58a6ff' : '#484f58';
+  ctxM.lineWidth = isClosed ? 2 : 1;
+  ctxM.setLineDash(isClosed ? [] : [5, 4]);
+  ctxM.beginPath();
+  ctxM.moveTo(lastX, y + boxH);
+  ctxM.lineTo(lastX, fbY);
+  ctxM.lineTo(firstX, fbY);
+  ctxM.lineTo(firstX, y + boxH);
+  ctxM.stroke();
+  ctxM.setLineDash([]);
+
+  ctxM.fillStyle = isClosed ? '#58a6ff' : '#f85149';
+  ctxM.font = 'bold 13px sans-serif';
+  ctxM.textAlign = 'center';
+  ctxM.fillText(isClosed ? '✓ 有反馈（闭环）' : '✗ 无反馈（开环）', W/2, fbY + 18);
+  ctxM.textAlign = 'start';
+
+  // 标题
+  ctxM.fillStyle = '#e6edf3';
+  ctxM.font = 'bold 13px sans-serif';
+  ctxM.fillText(isClosed ? '双闭环（速度环 + 电流环）' : '开环控制', 12, 22);
+}
+
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 40, midY = H/2;
+
+  ctxW.strokeStyle = '#30363d';
+  ctxW.beginPath(); ctxW.moveTo(pad, midY); ctxW.lineTo(W-pad, midY); ctxW.stroke();
+
+  const tMax = Math.max(5, state.history.length ? state.history[state.history.length-1].t : 0);
+  ctxW.fillStyle = '#7d8590'; ctxW.font = '10px sans-serif';
+  for (let k = 0; k <= 5; k++) {
+    const x = pad + (W-2*pad) * k/5;
+    ctxW.fillText((k*tMax/5).toFixed(1)+'s', x-14, H-6);
+  }
+
+  if (state.history.length < 2) {
+    ctxW.fillStyle = '#7d8590'; ctxW.font = '12px sans-serif';
+    ctxW.fillText('按"开始仿真"查看波形', W/2 - 60, midY - 10);
+    return;
+  }
+
+  let wMax = 0.5;
+  state.history.forEach(h => {
+    wMax = Math.max(wMax, Math.abs(h.omega), Math.abs(h.w_ref));
+  });
+  wMax *= 1.2;
+
+  const amp = (H/2 - 20) / wMax;
+  const xNow = pad + (W-2*pad) * Math.min(1, state.t / tMax);
+
+  // ω_ref（虚线）
+  ctxW.strokeStyle = '#3fb950'; ctxW.setLineDash([4,3]); ctxW.lineWidth = 1.5;
+  ctxW.beginPath();
+  ctxW.moveTo(pad, midY - state.w_ref * amp);
+  ctxW.lineTo(pad + (W-2*pad) * (state.history[state.history.length-1].t / tMax), midY - state.w_ref * amp);
+  ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // ω（实际）
+  ctxW.strokeStyle = '#58a6ff'; ctxW.lineWidth = 2;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = pad + (W-2*pad) * (h.t / tMax);
+    const y = midY - h.omega * amp;
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  // 时间游标
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, 6); ctxW.lineTo(xNow, H-6); ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // 图例
+  ctxW.font = '11px sans-serif';
+  ctxW.fillStyle = '#3fb950'; ctxW.fillText('ω_ref', pad + 6, 14);
+  ctxW.fillStyle = '#58a6ff'; ctxW.fillText('ω_act', pad + 60, 14);
+
+  // 静差
+  const last = state.history[state.history.length-1];
+  const err = last.w_ref - last.omega;
+  ctxW.fillStyle = Math.abs(err) < 0.2 ? '#3fb950' : '#f0b429';
+  ctxW.font = 'bold 11px monospace';
+  ctxW.fillText('静差 Δω = ' + err.toFixed(3), pad + 6, H - 10);
+}
+
+function draw() {
+  drawMain();
+  drawWave();
+  const d = state.lastData;
+  if (d) {
+    $('d-wact').textContent = d.omega.toFixed(3);
+    $('d-wref').textContent = d.w_ref.toFixed(3);
+    $('d-err').textContent = (d.w_ref - d.omega).toFixed(3);
+    $('d-iqref').textContent = d.iq_ref.toFixed(3);
+    $('d-iq').textContent = d.iq.toFixed(3);
+    $('d-te').textContent = d.Te.toFixed(3);
+  }
+}
+
+window.addEventListener('load', () => { resetSim(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  let realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  const steps = Math.max(1, Math.round(realDt / state.dt));
+  for (let k = 0; k < steps; k++) {
+    state.t += state.dt;
+    stepOnce();
+  }
+  trimHistory();
+
+  $('s-t').value = Math.min(5, state.t);
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetSim();
+draw();
+</script>
+</body>
+</html>

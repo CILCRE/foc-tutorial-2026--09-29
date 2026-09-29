@@ -1,0 +1,340 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>19 · PI 原理 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .formula-big { background:#0d1117; border:1px solid #d2a8ff; border-radius:6px; padding:16px; font-family:monospace; font-size:14px; text-align:center; color:#d2a8ff; margin-bottom:12px; }
+  .term-card { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:8px; }
+  .term-card .t-name { font-weight:bold; font-size:13px; margin-bottom:6px; }
+  .term-card .t-desc { font-size:11px; color:#c9d1d9; line-height:1.8; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>PI 原理</h3>
+
+    <div style="background:#d2a8ff22;border-left:3px solid #d2a8ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#d2a8ff;">第四部分 · PI 调参</b><br>
+      Kp 和 Ki 各自做什么？
+    </div>
+
+    <div class="section-title">比例增益 Kp <span id="v-kp">1.00</span></div>
+    <input type="range" id="s-kp" min="0" max="5" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">积分增益 Ki <span id="v-ki">2.00</span></div>
+    <input type="range" id="s-ki" min="0" max="10" step="0.1" value="2" style="width:100%;">
+
+    <div class="section-title">目标值 <span id="v-target">1.00</span></div>
+    <input type="range" id="s-target" min="0.5" max="2" step="0.1" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#d2a8ff;">误差 e</span><span id="d-err">0.000</span></div>
+      <div class="row"><span style="color:#58a6ff;">P 项 (Kp·e)</span><span id="d-p">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">I 项 (Ki·∫e)</span><span id="d-i">0.000</span></div>
+      <div class="row"><span style="color:#f0b429;">输出 u</span><span id="d-u">0.000</span></div>
+      <div class="row"><span style="color:#e6edf3;">反馈 y</span><span id="d-y">0.000</span></div>
+    </div>
+
+    <div class="section-title">PI 公式</div>
+    <div class="formula-big">
+      u = Kp·e + Ki·∫e dt
+    </div>
+
+    <div class="hint">
+      <b>PI 控制器</b> = 比例(P) + 积分(I)：<br>
+      <b style="color:#58a6ff;">P 项</b>：当前误差越大，输出越大——响应快，但有静差。<br>
+      <b style="color:#3fb950;">I 项</b>：累积历史误差——消除静差，但太大会振荡。<br>
+      <br>
+      <b style="color:#d2a8ff;">Kp 和 Ki 要配合调</b>，才能"又快又稳又无静差"。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="section-title" style="margin-top:0;">PI 控制器结构</div>
+      <canvas id="cv-struct" data-fit="240"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div class="section-title" style="margin-top:0;">阶跃响应（Kp / Ki 影响）</div>
+      <canvas id="cv-response" data-fit="300"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>PI 控制器原理：</b>PI = 比例(Proportional) + 积分(Integral)。<br>
+  <b>P 项（Kp·e）</b>：对"当前误差"做出反应。Kp 越大，响应越快——但太大就振荡。<br>
+  <b>I 项（Ki·∫e）</b>：对"历史误差的累积"做出反应。Ki 越大，消静差越快——但太大也振荡。<br>
+  <b>为什么要 I 项？</b>只有 P 项时，稳态必然有静差（因为要"输出非零"就必须有"非零误差"）。
+  I 项能"积累误差"，即使误差很小，时间长了也能产生足够输出，从而消除静差。<br>
+  <b>调参顺序</b>：先调 P（让响应快），再调 I（消除静差）。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const state = {
+  playing: false,
+  Kp: 1.0,
+  Ki: 2.0,
+  target: 1.0,
+  // 一阶被控对象
+  y: 0,
+  integral: 0,
+  t: 0,
+  history: [],
+  dt: 0.001,
+};
+
+const $ = id => document.getElementById(id);
+
+$('s-kp').oninput = e => { state.Kp = +e.target.value; $('v-kp').textContent = state.Kp.toFixed(2); };
+$('s-ki').oninput = e => { state.Ki = +e.target.value; $('v-ki').textContent = state.Ki.toFixed(2); };
+$('s-target').oninput = e => { state.target = +e.target.value; $('v-target').textContent = state.target.toFixed(2); resetSim(); draw(); };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 仿真';
+};
+
+$('btn-reset').onclick = () => {
+  resetSim();
+  state.playing = false;
+  $('btn-play').textContent = '▶ 仿真';
+  draw();
+};
+
+function resetSim() {
+  state.y = 0;
+  state.integral = 0;
+  state.t = 0;
+  state.history = [];
+}
+
+// ===== 仿真一步 =====
+function stepOnce() {
+  const dt = state.dt;
+  const e = state.target - state.y;
+
+  // PI 输出
+  state.integral += e * dt;
+  const p = state.Kp * e;
+  const i = state.Ki * state.integral;
+  const u = p + i;
+
+  // 一阶被控对象：dy/dt = (u - y) / tau
+  const tau = 0.5;
+  state.y += (u - state.y) / tau * dt;
+
+  state.history.push({ t: state.t, y: state.y, target: state.target, u: u, e: e, p: p, i: i });
+  state.t += dt;
+}
+
+// ===== 画布 =====
+const cvStruct = $('cv-struct'), ctxS = cvStruct.getContext('2d');
+const cvResp = $('cv-response'), ctxR = cvResp.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawStruct() {
+  const W = cvStruct.clientWidth, H = cvStruct.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxS.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const boxW = 120, boxH = 50;
+  const gap = 60;
+
+  // 目标
+  ctxS.fillStyle = '#58a6ff';
+  ctxS.font = 'bold 13px sans-serif';
+  ctxS.textAlign = 'center';
+  ctxS.fillText('目标 r', cx - 220, cy + 5);
+
+  // 求和点
+  ctxS.strokeStyle = '#7d8590'; ctxS.lineWidth = 2;
+  ctxS.beginPath(); ctxS.arc(cx - 160, cy, 12, 0, 2*Math.PI); ctxS.stroke();
+  ctxS.fillStyle = '#7d8590';
+  ctxS.font = '14px sans-serif';
+  ctxS.fillText('+', cx - 160, cy - 3);
+  ctxS.fillText('−', cx - 160, cy + 12);
+
+  // 误差标签
+  ctxS.fillStyle = '#d2a8ff'; ctxS.font = '11px monospace';
+  ctxS.fillText('e', cx - 130, cy - 16);
+
+  // PI 框
+  ctxS.fillStyle = '#d2a8ff22'; ctxS.strokeStyle = '#d2a8ff'; ctxS.lineWidth = 2;
+  ctxS.fillRect(cx - 90, cy - boxH/2, boxW, boxH);
+  ctxS.strokeRect(cx - 90, cy - boxH/2, boxW, boxH);
+  ctxS.fillStyle = '#d2a8ff'; ctxS.font = 'bold 13px sans-serif';
+  ctxS.fillText('PI 控制器', cx - 30, cy - 4);
+  ctxS.font = '11px monospace';
+  ctxS.fillText('u = Kp·e + Ki·∫e', cx - 30, cy + 14);
+
+  // 被控对象
+  ctxS.fillStyle = '#3fb95022'; ctxS.strokeStyle = '#3fb950'; ctxS.lineWidth = 2;
+  ctxS.fillRect(cx + 30, cy - boxH/2, boxW, boxH);
+  ctxS.strokeRect(cx + 30, cy - boxH/2, boxW, boxH);
+  ctxS.fillStyle = '#3fb950'; ctxS.font = 'bold 13px sans-serif';
+  ctxS.fillText('被控对象', cx + 90, cy - 4);
+  ctxS.font = '11px monospace';
+  ctxS.fillText('(电机等)', cx + 90, cy + 14);
+
+  // 输出
+  ctxS.fillStyle = '#3fb950';
+  ctxS.font = 'bold 13px sans-serif';
+  ctxS.fillText('输出 y', cx + 220, cy + 5);
+
+  // 箭头
+  arrow(ctxS, cx - 210, cy, cx - 175, cy, '#7d8590', 1.5, 6);
+  arrow(ctxS, cx - 148, cy, cx - 93, cy, '#d2a8ff', 1.5, 6);
+  arrow(ctxS, cx + 30, cy, cx + 25, cy, 'transparent', 0, 0); // placeholder
+  arrow(ctxS, cx + 30, cy, cx - 93 + boxW, cy, '#3fb950', 1.5, 6);
+  arrow(ctxS, cx + 90 + boxW/2, cy, cx + 210, cy, '#3fb950', 1.5, 6);
+
+  // 反馈线
+  const fbY = cy + 80;
+  ctxS.strokeStyle = '#58a6ff'; ctxS.lineWidth = 1.5;
+  ctxS.setLineDash([4,3]);
+  ctxS.beginPath();
+  ctxS.moveTo(cx + 210, cy);
+  ctxS.lineTo(cx + 210, fbY);
+  ctxS.lineTo(cx - 160, fbY);
+  ctxS.lineTo(cx - 160, cy + 12);
+  ctxS.stroke();
+  ctxS.setLineDash([]);
+  ctxS.fillStyle = '#58a6ff'; ctxS.font = '11px monospace';
+  ctxS.fillText('反馈', cx + 20, fbY + 16);
+
+  ctxS.textAlign = 'start';
+}
+
+function drawResponse() {
+  const W = cvResp.clientWidth, H = cvResp.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxR.clearRect(0, 0, W, H);
+  const pad = 50, plotY = 20, plotH = H - 40;
+  const plotW = W - pad * 2;
+
+  ctxR.fillStyle = '#0d1117';
+  ctxR.fillRect(pad, plotY, plotW, plotH);
+  ctxR.strokeStyle = '#30363d';
+  ctxR.strokeRect(pad, plotY, plotW, plotH);
+
+  // Y 轴标签
+  ctxR.fillStyle = '#7d8590'; ctxR.font = '11px sans-serif';
+  ctxR.fillText('y', pad - 20, plotY + 12);
+  ctxR.fillText('t (s)', pad + plotW - 20, plotY + plotH + 20);
+
+  if (state.history.length < 2) {
+    ctxR.fillStyle = '#7d8590'; ctxR.font = '12px sans-serif';
+    ctxR.fillText('按"仿真"查看响应', pad + 20, plotY + 30);
+    return;
+  }
+
+  const tMax = Math.max(2, state.history[state.history.length - 1].t);
+  const yMax = Math.max(state.target * 1.5, 1);
+
+  function mapX(t) { return pad + (t / tMax) * plotW; }
+  function mapY(y) { return plotY + plotH - (y / yMax) * plotH; }
+
+  // 目标线
+  ctxR.strokeStyle = '#3fb950'; ctxR.setLineDash([5,3]); ctxR.lineWidth = 1.5;
+  ctxR.beginPath();
+  ctxR.moveTo(pad, mapY(state.target));
+  ctxR.lineTo(pad + plotW, mapY(state.target));
+  ctxR.stroke();
+  ctxR.setLineDash([]);
+  ctxR.fillStyle = '#3fb950';
+  ctxR.fillText('目标 = ' + state.target.toFixed(2), pad + 8, mapY(state.target) - 6);
+
+  // 响应曲线
+  ctxR.strokeStyle = '#d2a8ff'; ctxR.lineWidth = 2;
+  ctxR.beginPath();
+  state.history.forEach((h, i) => {
+    const x = mapX(h.t), y = mapY(h.y);
+    if (i === 0) ctxR.moveTo(x, y); else ctxR.lineTo(x, y);
+  });
+  ctxR.stroke();
+
+  // 当前点
+  const last = state.history[state.history.length - 1];
+  ctxR.fillStyle = '#d2a8ff';
+  ctxR.beginPath(); ctxR.arc(mapX(last.t), mapY(last.y), 4, 0, 2*Math.PI); ctxR.fill();
+
+  // 静差标注
+  const err = state.target - last.y;
+  ctxR.fillStyle = Math.abs(err) < 0.05 * state.target ? '#3fb950' : '#f0b429';
+  ctxR.font = 'bold 12px monospace';
+  ctxR.fillText('静差 = ' + err.toFixed(4), pad + 12, plotY + plotH - 12);
+}
+
+function draw() {
+  drawStruct();
+  drawResponse();
+  // 更新数值
+  if (state.history.length > 0) {
+    const last = state.history[state.history.length - 1];
+    $('d-err').textContent = last.e.toFixed(3);
+    $('d-p').textContent = last.p.toFixed(3);
+    $('d-i').textContent = last.i.toFixed(3);
+    $('d-u').textContent = last.u.toFixed(3);
+    $('d-y').textContent = last.y.toFixed(3);
+  }
+}
+
+window.addEventListener('load', () => { resetSim(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  const realDt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+
+  const steps = Math.max(1, Math.round(realDt / state.dt));
+  for (let k = 0; k < steps; k++) {
+    if (state.t > 4) { state.playing = false; $('btn-play').textContent = '▶ 仿真'; break; }
+    stepOnce();
+  }
+
+  draw();
+  if (state.playing) requestAnimationFrame(loop);
+}
+
+resetSim();
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,680 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>07 · PI 参数调参 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 10px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.6; margin-top: 6px; }
+  .live-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .live-box .row { display:flex; justify-content:space-between; }
+  .legend-row { display:flex; align-items:center; gap:8px; font-size:11px; padding:4px 0; }
+  .legend-dot { width:12px; height:12px; border-radius:3px; display:inline-block; flex-shrink:0; }
+  .legend-name { flex:1; color:#c9d1d9; }
+  .legend-val { color:#7d8590; font-family:monospace; font-size:10px; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div class="ctrl">
+      <label>仿真时间 t <span id="v-t">0.00 s</span></label>
+      <input type="range" id="s-t" min="0" max="2" step="0.01" value="0">
+    </div>
+
+    <div class="section-title">调哪个环</div>
+    <div class="switch-group">
+      <button id="btn-loop-speed" class="on">速度环</button>
+      <button id="btn-loop-current">电流环</button>
+    </div>
+
+    <div class="section-title">预设参数组（勾选参与对比）</div>
+    <div id="preset-list" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;margin-bottom:12px;">
+      <!-- 动态填充 -->
+    </div>
+
+    <div id="speed-params">
+      <div class="section-title">速度环 PI（调当前高亮组）</div>
+      <div class="ctrl">
+        <label>Kp_w <span id="v-kpw">0.50</span></label>
+        <input type="range" id="s-kpw" min="0.05" max="6" step="0.05" value="0.5">
+      </div>
+      <div class="ctrl">
+        <label>Ki_w <span id="v-kiw">2.00</span></label>
+        <input type="range" id="s-kiw" min="0" max="10" step="0.1" value="2">
+      </div>
+    </div>
+
+    <div id="current-params" style="display:none;">
+      <div class="section-title">电流环 PI（调当前高亮组，d=q）</div>
+      <div class="ctrl">
+        <label>Kp_c <span id="v-kpc">2.00</span></label>
+        <input type="range" id="s-kpc" min="0.1" max="20" step="0.1" value="2">
+      </div>
+      <div class="ctrl">
+        <label>Ki_c <span id="v-kic">20.0</span></label>
+        <input type="range" id="s-kic" min="0" max="100" step="1" value="20">
+      </div>
+      <div class="ctrl">
+        <label>阶跃 iq_ref <span id="v-stepiq">0.50</span></label>
+        <input type="range" id="s-stepiq" min="0.1" max="1.5" step="0.05" value="0.5">
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <button id="btn-replay" style="width:100%">↻ 重新计算曲线</button>
+    </div>
+
+    <!-- 可复制数值 -->
+    <div class="section-title">曲线关键指标（可复制）</div>
+    <div class="live-box" id="metrics-box">
+      <!-- 动态填充 -->
+    </div>
+
+    <div class="hint" style="margin-top:16px;">
+      <b style="color:#58a6ff;">调参口诀：</b><br>
+      Kp ↑：响应快，但容易超调、振荡<br>
+      Ki ↑：消除静差，但太大振荡、太慢迟钝<br>
+      理想：快、稳、无静差
+    </div>
+  </div>
+
+  <div>
+    <div class="stage" style="margin-bottom:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">双闭环结构（点击侧栏"速度环/电流环"高亮对应环）</div>
+      <canvas id="cv-struct" data-fit="200"></canvas>
+    </div>
+
+    <div class="stage">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;" id="main-title">阶跃响应对比（多组曲线叠加）</div>
+      <canvas id="cv-main" data-fit="360"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;" id="wave-title">控制量波形</div>
+      <canvas id="cv-wave" data-fit="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>PI 调参的核心是<b>折中</b>——Kp 大了响应快但会超调，Ki 大了能消静差但容易振荡。
+  当前页可以勾选多组参数<b>同时对比</b>：看"慢响应"曲线多久才到目标、"振荡"曲线怎么来回摆、
+  "理想"曲线怎么又快又稳。拖动 Kp/Ki 滑块会<b>实时更新当前高亮组</b>的曲线。
+  工程上常用 Ziegler-Nichols 法或基于模型的整定；实际上电流环带宽要比速度环快 5 倍以上，
+  否则两个环会互相干扰。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+// ===== 4 组预设 =====
+const PRESETS = {
+  slow:   { name: '慢响应', color: '#7d8590', Kp_w: 0.15, Ki_w: 0.5,  Kp_c: 0.5,  Ki_c: 5,   enabled: true },
+  ideal:  { name: '理想',   color: '#3fb950', Kp_w: 0.5,  Ki_w: 2.0,  Kp_c: 2.0,  Ki_c: 20,  enabled: true },
+  over:   { name: '有超调', color: '#d29922', Kp_w: 1.5,  Ki_w: 5.0,  Kp_c: 5.0,  Ki_c: 40,  enabled: true },
+  osc:    { name: '振荡',   color: '#f85149', Kp_w: 2.5,  Ki_w: 8.0,  Kp_c: 8.0,  Ki_c: 80,  enabled: true },
+};
+
+const state = {
+  loop: 'speed',         // speed / current
+  editingPreset: 'ideal',   // 当前滑块正在调哪组
+  t: 0,
+  w_ref: 15,
+  TL: 0,
+  duration: 2,
+  stepIq: 0.5,           // ★ 修正 24：电流环阶跃的 iq_ref 目标值
+  dt: 0.001,
+};
+
+const $ = id => document.getElementById(id);
+
+// ===== 仿真：对单组参数跑一遍阶跃响应 =====
+// mode = 'speed'：阶跃 ω_ref，看 ω 响应
+// mode = 'current'：阶跃 iq_ref（速度环旁路），看 iq 响应
+function simulateOne(preset, mode) {
+  mode = mode || 'speed';
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  let m = FOC_MOTOR.createState();
+  const pi_d = FOC_MOTOR.createPIController(preset.Kp_c, preset.Ki_c);
+  const pi_q = FOC_MOTOR.createPIController(preset.Kp_c, preset.Ki_c);
+  const pi_w = FOC_MOTOR.createPIController(preset.Kp_w, preset.Ki_w);
+  const dt = state.dt;
+  const steps = Math.floor(state.duration / dt);
+  const data = [];
+
+  for (let k = 0; k < steps; k++) {
+    const t = k * dt;
+
+    let iq_ref, id_ref;
+    if (mode === 'current') {
+      // ★ 修正 24：电流环阶跃 —— iq_ref 目标值可调
+      iq_ref = state.stepIq;
+      id_ref = 0;
+    } else {
+      // 速度环模式：外环 PI 输出 iq_ref
+      const w_act = m.omega_m;
+      const e_w = state.w_ref - w_act;
+      iq_ref = FOC_MOTOR.stepPI(pi_w, e_w, dt, 1.5);
+      id_ref = 0;
+    }
+
+    const e_id = id_ref - m.id;
+    const e_iq = iq_ref - m.iq;
+    const vd_star = FOC_MOTOR.stepPI(pi_d, e_id, dt, 1.0);
+    const vq_star = FOC_MOTOR.stepPI(pi_q, e_iq, dt, 1.0);
+    m = FOC_MOTOR.stepStandard(m, vd_star, vq_star, state.TL, dt, P);
+
+    if (k % 5 === 0) {
+      data.push({ t, w: m.omega_m, iq: m.iq, iq_ref });
+    }
+  }
+  return data;
+}
+
+// ===== 计算关键指标 =====
+function computeMetrics(data, w_ref) {
+  if (data.length < 2) return { rise: 0, over: 0, settle: 0, err: 0 };
+  // 上升时间：10% → 90%
+  let t10 = null, t90 = null;
+  for (const d of data) {
+    if (t10 === null && d.w >= w_ref * 0.1) t10 = d.t;
+    if (t90 === null && d.w >= w_ref * 0.9) { t90 = d.t; break; }
+  }
+  const rise = (t10 !== null && t90 !== null) ? (t90 - t10) : 0;
+  // 超调：最大值超过 w_ref 的比例
+  let maxW = 0;
+  data.forEach(d => { maxW = Math.max(maxW, d.w); });
+  const over = maxW > w_ref ? ((maxW - w_ref) / w_ref * 100) : 0;
+  // 稳态误差
+  const last = data[data.length - 1];
+  const err = w_ref - last.w;
+  // 调节时间（进入 ±5% 并不再出去）
+  let settle = state.duration;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (Math.abs(data[i].w - w_ref) > w_ref * 0.05) {
+      settle = data[i].t;
+      break;
+    }
+  }
+  return { rise, over, settle, err };
+}
+
+// ===== 仿真缓存 =====
+let simCache = {};   // presetKey -> data
+
+function runAllSims() {
+  simCache = {};
+  const mode = state.loop;   // 'speed' or 'current'
+  for (const key in PRESETS) {
+    if (PRESETS[key].enabled) {
+      simCache[key] = simulateOne(PRESETS[key], mode);
+    }
+  }
+  updateMetricsDisplay();
+}
+
+function updateMetricsDisplay() {
+  const box = $('metrics-box');
+  let html = '';
+  for (const key in PRESETS) {
+    if (!PRESETS[key].enabled || !simCache[key]) continue;
+    const p = PRESETS[key];
+    const m = computeMetrics(simCache[key], state.w_ref);
+    html += `
+      <div class="row" style="color:${p.color};">
+        <span>${p.name}</span>
+        <span style="font-size:10px;">上升 ${m.rise.toFixed(2)}s · 超调 ${m.over.toFixed(0)}% · 调节 ${m.settle.toFixed(2)}s</span>
+      </div>
+    `;
+  }
+  if (!html) html = '<div style="color:#7d8590;">（请至少勾选一组参数）</div>';
+  box.innerHTML = html;
+}
+
+// ===== 预设列表 UI =====
+function renderPresetList() {
+  const box = $('preset-list');
+  let html = '';
+  for (const key in PRESETS) {
+    const p = PRESETS[key];
+    const isEdit = (key === state.editingPreset);
+    const border = isEdit ? `outline:1px solid ${p.color};outline-offset:2px;` : '';
+    html += `
+      <div class="legend-row" data-key="${key}" style="cursor:pointer;${border}">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} style="accent-color:${p.color};">
+        <span class="legend-dot" style="background:${p.color};"></span>
+        <span class="legend-name">${p.name}</span>
+        <span class="legend-val">Kp=${state.loop === 'speed' ? p.Kp_w : p.Kp_c} Ki=${state.loop === 'speed' ? p.Ki_w : p.Ki_c}</span>
+      </div>
+    `;
+  }
+  box.innerHTML = html;
+
+  // 绑定事件
+  box.querySelectorAll('.legend-row').forEach(row => {
+    const key = row.dataset.key;
+    // 点行 → 切换编辑目标
+    row.onclick = (ev) => {
+      // 如果点的是 checkbox 本身，由 checkbox 处理
+      if (ev.target.tagName === 'INPUT') return;
+      state.editingPreset = key;
+      renderPresetList();
+      updateSlidersFromPreset();
+    };
+    // checkbox → 切换 enabled
+    const cb = row.querySelector('input[type=checkbox]');
+    cb.onclick = (ev) => {
+      ev.stopPropagation();
+      PRESETS[key].enabled = cb.checked;
+      runAllSims();
+      draw();
+    };
+  });
+}
+
+function updateSlidersFromPreset() {
+  const p = PRESETS[state.editingPreset];
+  if (state.loop === 'speed') {
+    $('s-kpw').value = p.Kp_w;
+    $('s-kiw').value = p.Ki_w;
+    $('v-kpw').textContent = p.Kp_w.toFixed(2);
+    $('v-kiw').textContent = p.Ki_w.toFixed(2);
+  } else {
+    $('s-kpc').value = p.Kp_c;
+    $('s-kic').value = p.Ki_c;
+    $('v-kpc').textContent = p.Kp_c.toFixed(2);
+    $('v-kic').textContent = p.Ki_c.toFixed(0);
+  }
+}
+
+// ===== 滑块绑定 =====
+$('s-kpw').oninput = e => {
+  const v = +e.target.value;
+  $('v-kpw').textContent = v.toFixed(2);
+  PRESETS[state.editingPreset].Kp_w = v;
+  updatePresetValues();
+  runAllSims();
+  draw();
+};
+$('s-kiw').oninput = e => {
+  const v = +e.target.value;
+  $('v-kiw').textContent = v.toFixed(2);
+  PRESETS[state.editingPreset].Ki_w = v;
+  updatePresetValues();
+  runAllSims();
+  draw();
+};
+$('s-kpc').oninput = e => {
+  const v = +e.target.value;
+  $('v-kpc').textContent = v.toFixed(2);
+  PRESETS[state.editingPreset].Kp_c = v;
+  updatePresetValues();
+  runAllSims();
+  draw();
+};
+$('s-kic').oninput = e => {
+  const v = +e.target.value;
+  $('v-kic').textContent = v.toFixed(0);
+  PRESETS[state.editingPreset].Ki_c = v;
+  updatePresetValues();
+  runAllSims();
+  draw();
+};
+// ★ 修正 24：iq_ref 阶跃滑块
+$('s-stepiq').oninput = e => {
+  state.stepIq = +e.target.value;
+  $('v-stepiq').textContent = state.stepIq.toFixed(2);
+  runAllSims();
+  draw();
+};
+
+function updatePresetValues() {
+  // 只更新列表里的数值显示（不重绘整个列表，避免打断拖动）
+  const box = $('preset-list');
+  box.querySelectorAll('.legend-row').forEach(row => {
+    const key = row.dataset.key;
+    const p = PRESETS[key];
+    const valEl = row.querySelector('.legend-val');
+    if (valEl) {
+      valEl.textContent = `Kp=${state.loop === 'speed' ? p.Kp_w : p.Kp_c} Ki=${state.loop === 'speed' ? p.Ki_w : p.Ki_c}`;
+    }
+  });
+}
+
+// ===== 环切换 =====
+$('btn-loop-speed').onclick = () => {
+  state.loop = 'speed';
+  $('btn-loop-speed').classList.add('on');
+  $('btn-loop-current').classList.remove('on');
+  $('speed-params').style.display = 'block';
+  $('current-params').style.display = 'none';
+  renderPresetList();
+  updateSlidersFromPreset();
+  runAllSims();
+  draw();
+};
+$('btn-loop-current').onclick = () => {
+  state.loop = 'current';
+  $('btn-loop-speed').classList.remove('on');
+  $('btn-loop-current').classList.add('on');
+  $('speed-params').style.display = 'none';
+  $('current-params').style.display = 'block';
+  renderPresetList();
+  updateSlidersFromPreset();
+  runAllSims();
+  draw();
+};
+
+$('btn-replay').onclick = () => {
+  runAllSims();
+  draw();
+};
+
+// 时间滑块（只做游标）
+$('s-t').oninput = e => {
+  state.t = +e.target.value;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+};
+
+// ===== 画布 =====
+const cvStruct = $('cv-struct'), ctxS = cvStruct.getContext('2d');
+const cvMain = $('cv-main'), ctxM = cvMain.getContext('2d');
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+
+// ===== 箭头绘制工具 =====
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const hl = Math.max(4, Math.min(headLen, len * 0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 双环结构图 =====
+function drawStruct() {
+  const W = cvStruct.clientWidth, H = cvStruct.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxS.clearRect(0, 0, W, H);
+
+  const isSpeedMode = (state.loop === 'speed');   // 当前调哪个环
+
+  // 布局：4 个方块横排 + 反馈线
+  const boxW = 130, boxH = 60;
+  const gap = 50;
+  const totalW = boxW * 4 + gap * 3;
+  const startX = (W - totalW) / 2;
+  const y = H / 2 - boxH / 2;
+
+  const blocks = [
+    { name: '速度环 PI', sub: '外环 · 慢', color: '#58a6ff', key: 'speed' },
+    { name: '电流环 PI', sub: '内环 · 快', color: '#d2a8ff', key: 'current' },
+    { name: '逆 Park',   sub: '坐标变换', color: '#7d8590', key: null },
+    { name: '电机',      sub: 'PMSM',    color: '#3fb950', key: null },
+  ];
+
+  // 输入箭头 + ω_ref 标签
+  const inputX = startX - 30;
+  ctxS.strokeStyle = '#7d8590';
+  ctxS.lineWidth = 2;
+  ctxS.beginPath();
+  ctxS.moveTo(inputX, y + boxH/2);
+  ctxS.lineTo(startX, y + boxH/2);
+  ctxS.stroke();
+  ctxS.fillStyle = '#7d8590';
+  ctxS.font = 'bold 12px sans-serif';
+  ctxS.textAlign = 'center';
+  ctxS.fillText('ω_ref', inputX - 10, y + boxH/2 + 4);
+  ctxS.textAlign = 'start';
+
+  // 4 个方块
+  blocks.forEach((b, i) => {
+    const bx = startX + i * (boxW + gap);
+    const isHighlight = (b.key === state.loop);
+    // 高亮：当前调的环
+    const fillColor = isHighlight ? b.color + '33' : '#21262d';
+    const strokeColor = isHighlight ? b.color : '#30363d';
+    const textColor = isHighlight ? b.color : '#e6edf3';
+
+    ctxS.fillStyle = fillColor;
+    ctxS.strokeStyle = strokeColor;
+    ctxS.lineWidth = isHighlight ? 3 : 1.5;
+    ctxS.fillRect(bx, y, boxW, boxH);
+    ctxS.strokeRect(bx, y, boxW, boxH);
+
+    ctxS.fillStyle = textColor;
+    ctxS.font = 'bold 14px sans-serif';
+    ctxS.textAlign = 'center';
+    ctxS.fillText(b.name, bx + boxW/2, y + boxH/2 - 4);
+    ctxS.font = '11px sans-serif';
+    ctxS.fillStyle = isHighlight ? b.color : '#7d8590';
+    ctxS.fillText(b.sub, bx + boxW/2, y + boxH/2 + 16);
+    ctxS.textAlign = 'start';
+
+    // 中间箭头（从方块 i 到 i+1）
+    if (i < blocks.length - 1) {
+      const ax1 = bx + boxW;
+      const ax2 = bx + boxW + gap;
+      const ay = y + boxH/2;
+      arrow(ctxS, ax1, ay, ax2, ay, '#7d8590', 2, 8);
+      // 信号标签
+      const labels = ['iq_ref', 'vq*', '电压/电流'];
+      ctxS.fillStyle = '#7d8590';
+      ctxS.font = '10px monospace';
+      ctxS.textAlign = 'center';
+      ctxS.fillText(labels[i], (ax1 + ax2) / 2, ay - 8);
+      ctxS.textAlign = 'start';
+    }
+  });
+
+  // 反馈线（底部从电机回到速度环）
+  const lastBoxX = startX + 3 * (boxW + gap) + boxW/2;
+  const firstBoxX = startX + boxW/2;
+  const fbY = y + boxH + 30;
+
+  ctxS.strokeStyle = '#58a6ff';
+  ctxS.lineWidth = 1.5;
+  ctxS.setLineDash([5,3]);
+  ctxS.beginPath();
+  ctxS.moveTo(lastBoxX, y + boxH);
+  ctxS.lineTo(lastBoxX, fbY);
+  ctxS.lineTo(firstBoxX, fbY);
+  ctxS.lineTo(firstBoxX, y + boxH);
+  ctxS.stroke();
+  ctxS.setLineDash([]);
+
+  // 反馈标签
+  ctxS.fillStyle = '#58a6ff';
+  ctxS.font = '11px sans-serif';
+  ctxS.textAlign = 'center';
+  ctxS.fillText('ω 反馈', firstBoxX + 40, fbY + 14);
+  ctxS.fillText('iq 反馈', startX + (boxW + gap) + boxW/2, fbY + 14);
+  ctxS.textAlign = 'start';
+
+  // 顶部说明
+  ctxS.fillStyle = '#e6edf3';
+  ctxS.font = 'bold 12px sans-serif';
+  const modeText = state.loop === 'speed'
+    ? '当前调节：速度环（外环）—— 输出电流指令 iq_ref'
+    : '当前调节：电流环（内环）—— 输出电压指令 vq*';
+  ctxS.fillText(modeText, 12, 18);
+
+  // 右侧图例
+  ctxS.fillStyle = '#7d8590';
+  ctxS.font = '10px sans-serif';
+  ctxS.fillText('内环（快）', W - 80, y - 10);
+  ctxS.fillText('外环（慢）', W - 80, y + boxH + 10);
+}
+
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  ctxM.clearRect(0, 0, W, H);
+  const pad = 55;
+  const plotX = pad, plotY = 30;
+  const plotW = W - pad * 2, plotH = H - plotY - 40;
+
+  // 背景
+  ctxM.fillStyle = '#0d1117';
+  ctxM.fillRect(plotX, plotY, plotW, plotH);
+  ctxM.strokeStyle = '#30363d';
+  ctxM.strokeRect(plotX, plotY, plotW, plotH);
+
+  // 坐标轴
+  ctxM.fillStyle = '#7d8590'; ctxM.font = '11px sans-serif';
+  if (state.loop === 'current') {
+    ctxM.fillText('iq (A)', plotX - 48, plotY + 12);
+  } else {
+    ctxM.fillText('ω (rad/s)', plotX - 48, plotY + 12);
+  }
+  ctxM.fillText('t (s)', plotX + plotW - 20, plotY + plotH + 20);
+
+  const tMax = state.duration;
+  const wMax = state.w_ref * 1.6;
+
+  function mapX(t) { return plotX + (t / tMax) * plotW; }
+  function mapY(w) { return plotY + plotH - (w / wMax) * plotH; }
+
+  // 网格
+  ctxM.strokeStyle = '#21262d'; ctxM.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    const y = plotY + plotH * k / 4;
+    ctxM.beginPath(); ctxM.moveTo(plotX, y); ctxM.lineTo(plotX + plotW, y); ctxM.stroke();
+  }
+
+  // 目标线
+  ctxM.strokeStyle = '#3fb950'; ctxM.setLineDash([5,3]); ctxM.lineWidth = 1.5;
+  ctxM.beginPath();
+  ctxM.moveTo(plotX, mapY(state.w_ref));
+  ctxM.lineTo(plotX + plotW, mapY(state.w_ref));
+  ctxM.stroke();
+  ctxM.setLineDash([]);
+  ctxM.fillStyle = '#3fb950'; ctxM.font = '11px sans-serif';
+  ctxM.fillText('目标 ω_ref = ' + state.w_ref.toFixed(2), plotX + 8, mapY(state.w_ref) - 6);
+
+  // 每条曲线
+  for (const key in simCache) {
+    const p = PRESETS[key];
+    const data = simCache[key];
+    if (!data || data.length < 2) continue;
+    ctxM.strokeStyle = p.color;
+    ctxM.lineWidth = (key === state.editingPreset) ? 2.5 : 1.8;
+    ctxM.beginPath();
+    data.forEach((d, i) => {
+      const x = mapX(d.t), y = mapY(d.w);
+      if (i === 0) ctxM.moveTo(x, y); else ctxM.lineTo(x, y);
+    });
+    ctxM.stroke();
+  }
+
+  // 图例（右上角）
+  let lx = plotX + plotW - 130;
+  let ly = plotY + 16;
+  for (const key in PRESETS) {
+    if (!PRESETS[key].enabled) continue;
+    const p = PRESETS[key];
+    ctxM.fillStyle = p.color;
+    ctxM.fillRect(lx, ly - 6, 12, 3);
+    ctxM.font = '11px sans-serif';
+    ctxM.fillText(p.name, lx + 18, ly);
+    ly += 14;
+  }
+
+  // 时间游标
+  const xNow = mapX(state.t);
+  ctxM.strokeStyle = '#58a6ff'; ctxM.setLineDash([3,3]);
+  ctxM.beginPath(); ctxM.moveTo(xNow, plotY); ctxM.lineTo(xNow, plotY + plotH); ctxM.stroke();
+  ctxM.setLineDash([]);
+}
+
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 55;
+  const plotX = pad, plotY = 20;
+  const plotW = W - pad * 2, plotH = H - plotY - 30;
+
+  ctxW.fillStyle = '#0d1117';
+  ctxW.fillRect(plotX, plotY, plotW, plotH);
+  ctxW.strokeStyle = '#30363d';
+  ctxW.strokeRect(plotX, plotY, plotW, plotH);
+
+  ctxW.fillStyle = '#7d8590'; ctxW.font = '10px sans-serif';
+  ctxW.fillText('iq (A)', plotX - 42, plotY + 12);
+  ctxW.fillText('t (s)', plotX + plotW - 20, plotY + plotH + 14);
+
+  const tMax = state.duration;
+  let iMax = 0.5;
+  for (const key in simCache) {
+    const data = simCache[key];
+    if (!data) continue;
+    data.forEach(d => {
+      iMax = Math.max(iMax, Math.abs(d.iq));
+      if (d.iq_ref !== undefined) iMax = Math.max(iMax, Math.abs(d.iq_ref));
+    });
+  }
+  iMax *= 1.2;
+
+  function mapX(t) { return plotX + (t / tMax) * plotW; }
+  function mapY(i) { return plotY + plotH/2 - (i / iMax) * plotH/2; }
+
+  ctxW.strokeStyle = '#30363d';
+  ctxW.beginPath(); ctxW.moveTo(plotX, mapY(0)); ctxW.lineTo(plotX + plotW, mapY(0)); ctxW.stroke();
+
+  // 每条 iq 曲线
+  for (const key in simCache) {
+    if (!PRESETS[key].enabled) continue;
+    const p = PRESETS[key];
+    const data = simCache[key];
+    if (!data) continue;
+    ctxW.strokeStyle = p.color;
+    ctxW.lineWidth = (key === state.editingPreset) ? 2.2 : 1.5;
+    ctxW.beginPath();
+    data.forEach((d, i) => {
+      const x = mapX(d.t), y = mapY(d.iq);
+      if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+    });
+    ctxW.stroke();
+  }
+
+  // 时间游标
+  const xNow = mapX(state.t);
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, plotY); ctxW.lineTo(xNow, plotY + plotH); ctxW.stroke();
+  ctxW.setLineDash([]);
+}
+
+function draw() { drawStruct(); drawMain(); drawWave(); }
+
+// ===== 初始化 =====
+window.addEventListener('load', () => {
+  renderPresetList();
+  updateSlidersFromPreset();
+  runAllSims();
+  draw();
+});
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+// 初始化执行
+renderPresetList();
+updateSlidersFromPreset();
+runAllSims();
+draw();
+</script>
+</body>
+</html>

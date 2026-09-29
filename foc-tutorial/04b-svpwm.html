@@ -1,0 +1,815 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>04b · SVPWM 详解 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #30363d; }
+  .tab { padding: 8px 16px; background: transparent; color: #7d8590; border: none; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; font-size: 14px; }
+  .tab:hover { color: #e6edf3; background: transparent; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; background: transparent; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 6px 10px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .io-box { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .io-card { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+  .io-card .label { font-size: 11px; color: #7d8590; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+  .io-card .val { font-family: monospace; font-size: 14px; color: #58a6ff; }
+  .io-card .val.green { color: #3fb950; }
+  .io-card .val.yellow { color: #d29922; }
+  .io-card .val.red { color: #f85149; }
+  .arrow-mid { font-size: 24px; color: #58a6ff; }
+  .data-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; }
+  .data-table th, .data-table td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #21262d; }
+  .data-table th { color: #7d8590; font-weight: normal; }
+  .data-table td.hi { color: #58a6ff; }
+  .data-table td.g { color: #3fb950; }
+  .data-table td.y { color: #d29922; }
+  .data-table td.r { color: #f85149; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 280px 1fr;">
+  <div class="panel">
+    <h3>SVPWM 详解 · 参数</h3>
+
+    <div style="background:#1f6feb22;border-left:3px solid #58a6ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#58a6ff;">SVPWM 在干什么？</b><br>
+      输入：vα, vβ（2 个数）<br>
+      输出：6 路 PWM 占空比
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="2" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">vα <span id="v-va">0.30</span></div>
+    <input type="range" id="s-va" min="-1" max="1" step="0.01" value="0.3" style="width:100%;">
+
+    <div class="section-title">vβ <span id="v-vb">0.50</span></div>
+    <input type="range" id="s-vb" min="-1" max="1" step="0.01" value="0.5" style="width:100%;">
+
+    <div class="section-title">Vdc <span id="v-vdc">1.00</span></div>
+    <input type="range" id="s-vdc" min="0.5" max="2" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">核心公式</div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;font-size:11px;line-height:1.9;font-family:monospace;">
+      <div style="color:#d2a8ff;">|Vref| = √(vα² + vβ²)</div>
+      <div style="color:#d2a8ff;">θ = atan2(vβ, vα)</div>
+      <div style="color:#d2a8ff;">扇区 = θ / 60°</div>
+      <div style="color:#d2a8ff;">T1, T2, T0 按扇区算</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="tabs">
+        <button class="tab active" data-mode="flow">输入→输出流程</button>
+        <button class="tab" data-mode="vector">基本矢量与扇区</button>
+        <button class="tab" data-mode="synthesis">矢量合成动画</button>
+        <button class="tab" data-mode="pwm">6 路 PWM 波形</button>
+      </div>
+      <canvas id="cv-main" data-fit="640"></canvas>
+    </div>
+
+    <div class="stage" style="margin-top:16px;">
+      <div class="title-sm" style="font-size:12px;color:#7d8590;margin-bottom:8px;" id="wave-title">实时数据</div>
+      <canvas id="cv-data" data-fit="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>SVPWM 核心原理：</b>输入是 FOC 逆 Park 算出的电压矢量 <b>vα, vβ</b>（两个连续值），
+  输出是驱动逆变器 6 个 MOSFET 的 <b>6 路 PWM 占空比</b>。算法分 5 步：
+  ① 判扇区（vα/vβ 落在六边形哪个区域）；
+  ② 算 T1/T2/T0（相邻两个基本矢量 + 零矢量的作用时间）；
+  ③ 分配到三相 Ta/Tb/Tc；
+  ④ 算 6 路占空比 A↑/A↓/B↑/B↓/C↑/C↓；
+  ⑤ 输出 PWM。
+  <b>关键</b>：SVPWM 不需要转子位置（θ 在逆 Park 那步已经用完了），它只管把 vα/vβ 翻译成开关信号。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0,
+  playing: false,
+  everStarted: false,
+  speed: 1.0,
+  valpha: 0.3,
+  vbeta: 0.5,
+  Vdc: 1.0,
+  mode: 'flow',
+};
+
+const $ = id => document.getElementById(id);
+
+// ===== SVPWM 核心算法 =====
+// 输入：valpha, vbeta, Vdc
+// 输出：{sector, T1, T2, T0, Ta, Tb, Tc, duty}
+function svpwm(valpha, vbeta, Vdc, Ts) {
+  Ts = Ts || 1;
+
+  // ★ 修正：用角度法判扇区（和六边形高亮一致）
+  let angle = Math.atan2(vbeta, valpha);   // -π ~ π
+  if (angle < 0) angle += 2 * Math.PI;      // 0 ~ 2π
+  const sector = Math.floor(angle / (Math.PI / 3)) + 1;  // 1 ~ 6
+
+  const X = Math.sqrt(3) * vbeta * Ts / Vdc;
+  const Y = (0.5*(Math.sqrt(3)*vbeta + 3*valpha)) * Ts / Vdc;
+  const Z = (0.5*(Math.sqrt(3)*vbeta - 3*valpha)) * Ts / Vdc;
+
+  let T1, T2;
+  switch (sector) {
+    case 1: T1 = -Z; T2 =  X; break;
+    case 2: T1 =  Z; T2 =  Y; break;
+    case 3: T1 =  X; T2 = -Y; break;
+    case 4: T1 = -X; T2 =  Z; break;
+    case 5: T1 = -Y; T2 = -Z; break;
+    case 6: T1 =  Y; T2 = -X; break;
+    default: T1 = 0; T2 = 0;
+  }
+  let T1c = Math.max(0, T1), T2c = Math.max(0, T2);
+  if (T1c + T2c > Ts) {
+    const k = Ts / (T1c + T2c);
+    T1c *= k; T2c *= k;
+  }
+  const T0 = Math.max(0, Ts - T1c - T2c);
+
+  const ta = (Ts - T1c - T2c) / 2;
+  const tb = ta + T1c;
+  const tc = tb + T2c;
+  let Ta, Tb, Tc;
+  switch (sector) {
+    case 1: Ta = tb; Tb = ta; Tc = tc; break;
+    case 2: Ta = ta; Tb = tc; Tc = tb; break;
+    case 3: Ta = ta; Tb = tb; Tc = tc; break;
+    case 4: Ta = tc; Tb = tb; Tc = ta; break;
+    case 5: Ta = tc; Tb = ta; Tc = tb; break;
+    case 6: Ta = tb; Tb = tc; Tc = ta; break;
+    default: Ta = Tb = Tc = Ts/2;
+  }
+  return {
+    sector, T1: T1c, T2: T2c, T0,
+    Ta, Tb, Tc, Ts, Vdc,
+    Vref: Math.hypot(valpha, vbeta),
+    thetaRef: Math.atan2(vbeta, valpha),
+    duty: { aUp: Ta/Ts, bUp: Tb/Ts, cUp: Tc/Ts },
+  };
+}
+
+// 6 个基本矢量
+const BASE_VECTORS = [
+  { id: 1, angDeg:   0, bits: '100' },
+  { id: 2, angDeg:  60, bits: '110' },
+  { id: 3, angDeg: 120, bits: '010' },
+  { id: 4, angDeg: 180, bits: '011' },
+  { id: 5, angDeg: 240, bits: '001' },
+  { id: 6, angDeg: 300, bits: '101' },
+];
+const SECTOR_NEIGHBORS = {
+  1: [1, 2], 2: [2, 3], 3: [3, 4],
+  4: [4, 5], 5: [5, 6], 6: [6, 1],
+};
+
+// ===== 事件 =====
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-va').oninput = e => { state.valpha = +e.target.value; $('v-va').textContent = state.valpha.toFixed(2); draw(); };
+$('s-vb').oninput = e => { state.vbeta = +e.target.value; $('v-vb').textContent = state.vbeta.toFixed(2); draw(); };
+$('s-vdc').oninput = e => { state.Vdc = +e.target.value; $('v-vdc').textContent = state.Vdc.toFixed(2); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) {
+    state.everStarted = true;
+    lastT = performance.now();
+    loop();
+  }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+$('btn-reset').onclick = () => {
+  state.t = 0;
+  state.valpha = 0.3;
+  state.vbeta = 0.5;
+  $('s-t').value = 0;
+  $('s-va').value = 0.3;
+  $('s-vb').value = 0.5;
+  $('v-t').textContent = '0.00 s';
+  $('v-va').textContent = '0.30';
+  $('v-vb').textContent = '0.50';
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 播放动画';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.mode = tab.dataset.mode;
+    draw();
+  };
+});
+
+// ===== 画布 =====
+const cvMain = $('cv-main'), ctxM = cvMain.getContext('2d');
+const cvData = $('cv-data'), ctxD = cvData.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 绘制主画布 =====
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxM.clearRect(0, 0, W, H);
+
+  const res = svpwm(state.valpha, state.vbeta, state.Vdc, 1);
+
+  if (state.mode === 'flow') drawFlow(W, H, res);
+  else if (state.mode === 'vector') drawVector(W, H, res);
+  else if (state.mode === 'synthesis') drawSynthesis(W, H, res);
+  else drawPwm(W, H, res);
+}
+
+// --- 1. 输入输出流程 ---
+function drawFlow(W, H, res) {
+  const cx = W/2, cy = H/2;
+
+  // ★ 输入框（矢量图 + 数值）
+  const inBoxX = 30, inBoxY = cy - 100, inBoxW = 200, inBoxH = 200;
+  ctxM.fillStyle = '#161b22';
+  ctxM.strokeStyle = '#58a6ff';
+  ctxM.lineWidth = 2;
+  ctxM.fillRect(inBoxX, inBoxY, inBoxW, inBoxH);
+  ctxM.strokeRect(inBoxX, inBoxY, inBoxW, inBoxH);
+
+  // 标题
+  ctxM.fillStyle = '#58a6ff';
+  ctxM.font = 'bold 12px sans-serif';
+  ctxM.textAlign = 'left';
+  ctxM.fillText('输入：vα, vβ', inBoxX + 8, inBoxY + 16);
+
+  // 矢量图区域（下方 120×120）
+  const vcx = inBoxX + inBoxW / 2;
+  const vcy = inBoxY + 90;
+  const vr = 50;   // 矢量图半径
+
+  // 网格圆
+  ctxM.strokeStyle = '#21262d';
+  ctxM.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    ctxM.beginPath(); ctxM.arc(vcx, vcy, vr * k / 4, 0, 2*Math.PI); ctxM.stroke();
+  }
+
+  // 坐标轴
+  ctxM.strokeStyle = '#30363d';
+  ctxM.lineWidth = 1;
+  ctxM.beginPath(); ctxM.moveTo(vcx - vr - 5, vcy); ctxM.lineTo(vcx + vr + 5, vcy); ctxM.stroke();
+  ctxM.beginPath(); ctxM.moveTo(vcx, vcy - vr - 5); ctxM.lineTo(vcx, vcy + vr + 5); ctxM.stroke();
+
+  // 轴标签
+  ctxM.fillStyle = '#58a6ff';
+  ctxM.font = '10px sans-serif';
+  ctxM.fillText('α', vcx + vr + 6, vcy + 3);
+  ctxM.fillText('β', vcx + 3, vcy - vr - 6);
+
+  // Vref 矢量（蓝色箭头）
+  const vNorm = 1.2;   // 归一化：1.2 单位 → 满量程 vr
+  const vx = vcx + state.valpha * vr / vNorm;
+  const vy = vcy - state.vbeta * vr / vNorm;
+  arrow(ctxM, vcx, vcy, vx, vy, '#58a6ff', 2.5, 8);
+
+  // 投影虚线
+  ctxM.setLineDash([2,2]);
+  ctxM.strokeStyle = '#58a6ff55';
+  ctxM.beginPath(); ctxM.moveTo(vx, vcy); ctxM.lineTo(vx, vy); ctxM.stroke();
+  ctxM.beginPath(); ctxM.moveTo(vcx, vy); ctxM.lineTo(vx, vy); ctxM.stroke();
+  ctxM.setLineDash([]);
+
+  // 数值（框底部）
+  ctxM.fillStyle = '#e6edf3';
+  ctxM.font = '10px monospace';
+  ctxM.fillText('vα=' + state.valpha.toFixed(3), inBoxX + 8, inBoxY + 165);
+  ctxM.fillText('vβ=' + state.vbeta.toFixed(3), inBoxX + 8, inBoxY + 180);
+  ctxM.fillStyle = '#58a6ff';
+  ctxM.fillText('|Vref|=' + res.Vref.toFixed(3), inBoxX + 8, inBoxY + 195);
+
+  // SVPWM 算法框
+  drawBox(cx - 110, cy - 100, 220, 200, '#d2a8ff',
+    ['SVPWM 算法', '', 
+     '① 判扇区 → ' + res.sector,
+     '② 算 T1 = ' + res.T1.toFixed(3),
+     '     T2 = ' + res.T2.toFixed(3),
+     '     T0 = ' + res.T0.toFixed(3),
+     '③ 分配到三相',
+     '④ 算 6 路占空比']);
+
+  // 输出框（6 路占空比）
+  const d = res.duty;
+  drawBox(W - 220, cy - 100, 190, 200, '#3fb950',
+    ['输出：6 路 PWM 占空比', '',
+     'A↑ = ' + (d.aUp*100).toFixed(1) + '%',
+     'A↓ = ' + ((1-d.aUp)*100).toFixed(1) + '%',
+     'B↑ = ' + (d.bUp*100).toFixed(1) + '%',
+     'B↓ = ' + ((1-d.bUp)*100).toFixed(1) + '%',
+     'C↑ = ' + (d.cUp*100).toFixed(1) + '%',
+     'C↓ = ' + ((1-d.cUp)*100).toFixed(1) + '%']);
+
+  // 箭头
+  arrow(ctxM, inBoxX + inBoxW, cy, cx - 115, cy, '#7d8590', 2, 8);
+  arrow(ctxM, cx + 115, cy, W - 225, cy, '#7d8590', 2, 8);
+
+  // 顶部标题
+  ctxM.fillStyle = '#e6edf3';
+  ctxM.font = 'bold 14px sans-serif';
+  ctxM.textAlign = 'center';
+  ctxM.fillText('SVPWM 的输入输出', W/2, 24);
+  ctxM.textAlign = 'start';
+}
+
+function drawBox(x, y, w, h, color, lines) {
+  ctxM.fillStyle = '#161b22';
+  ctxM.strokeStyle = color;
+  ctxM.lineWidth = 2;
+  ctxM.fillRect(x, y, w, h);
+  ctxM.strokeRect(x, y, w, h);
+  ctxM.fillStyle = color;
+  ctxM.font = 'bold 12px sans-serif';
+  ctxM.textAlign = 'left';
+  const lineH = 15;
+  const startY = y + 18;
+  lines.forEach((line, i) => {
+    if (i === 0) {
+      ctxM.font = 'bold 12px sans-serif';
+      ctxM.fillStyle = color;
+    } else {
+      ctxM.font = '11px monospace';
+      ctxM.fillStyle = '#e6edf3';
+    }
+    ctxM.fillText(line, x + 10, startY + i * lineH);
+  });
+}
+
+// --- 2. 基本矢量与扇区 ---
+function drawVector(W, H, res) {
+  const cx = W/2, cy = H/2;
+  const r = Math.min(W, H) * 0.36;
+
+  // 六边形
+  ctxM.strokeStyle = '#30363d';
+  ctxM.lineWidth = 2;
+  ctxM.beginPath();
+  BASE_VECTORS.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctxM.moveTo(x, y); else ctxM.lineTo(x, y);
+  });
+  ctxM.closePath(); ctxM.stroke();
+
+  // 6 个基本矢量
+  BASE_VECTORS.forEach(v => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    arrow(ctxM, cx, cy, x, y, '#484f58', 2, 8);
+    ctxM.fillStyle = '#7d8590'; ctxM.font = '11px sans-serif';
+    ctxM.fillText('V' + v.id, x + 6, y + 4);
+    ctxM.fillStyle = '#484f58'; ctxM.font = '10px monospace';
+    ctxM.fillText(v.bits, x - 4, y - 6);
+  });
+
+  // 扇区高亮
+  if (res.sector >= 1 && res.sector <= 6) {
+    const nv = SECTOR_NEIGHBORS[res.sector];
+    const v1 = BASE_VECTORS.find(b => b.id === nv[0]);
+    const v2 = BASE_VECTORS.find(b => b.id === nv[1]);
+    if (v1 && v2) {
+      ctxM.fillStyle = 'rgba(88, 166, 255, 0.15)';
+      ctxM.beginPath();
+      ctxM.moveTo(cx, cy);
+      const r1 = D2R(v1.angDeg), r2 = D2R(v2.angDeg);
+      ctxM.lineTo(cx + Math.cos(r1)*r, cy - Math.sin(r1)*r);
+      ctxM.lineTo(cx + Math.cos(r2)*r, cy - Math.sin(r2)*r);
+      ctxM.closePath(); ctxM.fill();
+    }
+  }
+
+  // 参考矢量
+  const vNorm = 2 / state.Vdc;
+  const rvx = cx + state.valpha * vNorm * r;
+  const rvy = cy - state.vbeta * vNorm * r;
+
+  // ★ vα 分量箭头（沿 α 轴，水平）
+  arrow(ctxM, cx, cy, rvx, cy, '#3fb950', 2, 8);
+  // ★ vβ 分量箭头（沿 β 轴，垂直）
+  arrow(ctxM, cx, cy, cx, rvy, '#d29922', 2, 8);
+
+  // ★ 投影虚线（Vref 末端投到两轴）
+  ctxM.setLineDash([4,3]);
+  ctxM.strokeStyle = '#3fb95088';
+  ctxM.beginPath();
+  ctxM.moveTo(rvx, cy);
+  ctxM.lineTo(rvx, rvy);
+  ctxM.stroke();
+  ctxM.strokeStyle = '#d2992288';
+  ctxM.beginPath();
+  ctxM.moveTo(cx, rvy);
+  ctxM.lineTo(rvx, rvy);
+  ctxM.stroke();
+  ctxM.setLineDash([]);
+
+  // 分量标签
+  ctxM.fillStyle = '#3fb950';
+  ctxM.font = 'bold 12px sans-serif';
+  ctxM.fillText('vα', (cx + rvx) / 2 - 8, cy + 16);
+  ctxM.fillStyle = '#d29922';
+  ctxM.fillText('vβ', cx + 8, (cy + rvy) / 2);
+
+  // Vref 矢量（最后画，覆盖在分量上面）
+  arrow(ctxM, cx, cy, rvx, rvy, '#58a6ff', 3, 11);
+
+  // 顶部信息
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 14px sans-serif';
+  ctxM.fillText('Vref 与扇区', 20, 24);
+  ctxM.font = '12px sans-serif';
+  ctxM.fillStyle = '#58a6ff';
+  ctxM.fillText('扇区 ' + res.sector, 20, 44);
+  ctxM.fillStyle = '#7d8590';
+  ctxM.fillText('|Vref| = ' + res.Vref.toFixed(3), 20, 62);
+  ctxM.fillText('θ = ' + (res.thetaRef*180/Math.PI).toFixed(1) + '°', 20, 78);
+}
+
+// --- 3. 矢量合成动画（上：矢量合成；下：6路PWM + 3路平均电压）---
+function drawSynthesis(W, H, res) {
+  // ===== 上半：矢量合成 =====
+  const topH = H * 0.55;      // 上半区高度
+  const cx = W/2, cy = topH * 0.55;
+  const r = Math.min(W, topH) * 0.34;
+
+  // 六边形
+  ctxM.strokeStyle = '#30363d';
+  ctxM.lineWidth = 1.5;
+  ctxM.beginPath();
+  BASE_VECTORS.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctxM.moveTo(x, y); else ctxM.lineTo(x, y);
+  });
+  ctxM.closePath(); ctxM.stroke();
+
+  // 两个相邻基本矢量
+  const nv = SECTOR_NEIGHBORS[res.sector];
+  if (nv) {
+    const v1 = BASE_VECTORS.find(b => b.id === nv[0]);
+    const v2 = BASE_VECTORS.find(b => b.id === nv[1]);
+    if (v1) {
+      const rad = D2R(v1.angDeg);
+      arrow(ctxM, cx, cy, cx + Math.cos(rad)*r, cy - Math.sin(rad)*r, '#3fb950', 2, 8);
+      const t1Len = r * res.T1;
+      arrow(ctxM, cx, cy, cx + Math.cos(rad)*t1Len, cy - Math.sin(rad)*t1Len, '#3fb950', 4, 10);
+    }
+    if (v2) {
+      const rad = D2R(v2.angDeg);
+      arrow(ctxM, cx, cy, cx + Math.cos(rad)*r, cy - Math.sin(rad)*r, '#d29922', 2, 8);
+      const t2Len = r * res.T2;
+      arrow(ctxM, cx, cy, cx + Math.cos(rad)*t2Len, cy - Math.sin(rad)*t2Len, '#d29922', 4, 10);
+    }
+  }
+
+  // Vref
+  const vNorm = 2 / state.Vdc;
+  arrow(ctxM, cx, cy, cx + state.valpha * vNorm * r, cy - state.vbeta * vNorm * r, '#58a6ff', 3, 10);
+
+  // 左上信息
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 13px sans-serif';
+  ctxM.fillText('① 矢量合成', 20, 22);
+  ctxM.font = '11px monospace';
+  ctxM.fillStyle = '#3fb950';
+  ctxM.fillText('T1=' + res.T1.toFixed(3) + '  V' + (nv?nv[0]:'?'), 20, 40);
+  ctxM.fillStyle = '#d29922';
+  ctxM.fillText('T2=' + res.T2.toFixed(3) + '  V' + (nv?nv[1]:'?'), 20, 56);
+  ctxM.fillStyle = '#7d8590';
+  ctxM.fillText('T0=' + res.T0.toFixed(3), 20, 72);
+
+  // 分隔线
+  ctxM.strokeStyle = '#30363d';
+  ctxM.lineWidth = 1;
+  ctxM.beginPath();
+  ctxM.moveTo(20, topH);
+  ctxM.lineTo(W - 20, topH);
+  ctxM.stroke();
+
+  // ===== 下半：6 路 PWM + 3 路平均电压 =====
+  // 布局：6 路 PWM（左侧 60%）+ 3 路平均电压（右侧 40%）
+  const pwmAreaW = W * 0.62;
+  const voltAreaW = W - pwmAreaW - 40;
+
+  // --- 左侧：6 路 PWM ---
+  const laneTitles = ['A↑', 'A↓', 'B↑', 'B↓', 'C↑', 'C↓'];
+  const laneDuties = [
+    res.duty.aUp, 1 - res.duty.aUp,
+    res.duty.bUp, 1 - res.duty.bUp,
+    res.duty.cUp, 1 - res.duty.cUp,
+  ];
+  const laneColors = ['#f85149', '#7c3b36', '#3fb950', '#2a6b34', '#d29922', '#8f6a1c'];
+
+  const pwmPadL = 55, pwmPadR = 10, pwmPadT = topH + 32, pwmPadB = 10;
+  const pwmW = pwmAreaW - pwmPadL - pwmPadR;
+  const laneH = (H - pwmPadT - pwmPadB) / 6;
+
+  // 标题
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 12px sans-serif';
+  ctxM.fillText('② 6 路 PWM（开关时间）', pwmPadL - 45, topH + 16);
+
+  laneTitles.forEach((title, i) => {
+    const y0 = pwmPadT + i * laneH;
+    const midY = y0 + laneH * 0.5;
+    const highY = y0 + laneH * 0.15;
+    const lowY = y0 + laneH * 0.85;
+
+    // 基线
+    ctxM.strokeStyle = '#21262d';
+    ctxM.lineWidth = 1;
+    ctxM.beginPath(); ctxM.moveTo(pwmPadL, midY); ctxM.lineTo(pwmPadL + pwmW, midY); ctxM.stroke();
+
+    // 波形
+    const duty = laneDuties[i];
+    const onDur = duty * pwmW;
+    const startX = pwmPadL + (pwmW - onDur) / 2;
+    const endX = startX + onDur;
+
+    ctxM.strokeStyle = laneColors[i];
+    ctxM.lineWidth = 1.5;
+    ctxM.beginPath();
+    ctxM.moveTo(pwmPadL, lowY);
+    ctxM.lineTo(startX, lowY);
+    ctxM.lineTo(startX, highY);
+    ctxM.lineTo(endX, highY);
+    ctxM.lineTo(endX, lowY);
+    ctxM.lineTo(pwmPadL + pwmW, lowY);
+    ctxM.stroke();
+
+    // 标签
+    ctxM.fillStyle = laneColors[i];
+    ctxM.font = '10px monospace';
+    ctxM.fillText(title, 8, midY + 4);
+
+    // 占空比
+    ctxM.fillStyle = '#7d8590';
+    ctxM.font = '10px monospace';
+    ctxM.fillText((duty*100).toFixed(0) + '%', pwmPadL + pwmW + 4, midY + 4);
+  });
+
+  // 标注 Ta/Tb/Tc 在 PWM 图下方
+  ctxM.fillStyle = '#58a6ff';
+  ctxM.font = '10px monospace';
+  ctxM.fillText('Ta=' + res.Ta.toFixed(3) + '  Tb=' + res.Tb.toFixed(3) + '  Tc=' + res.Tc.toFixed(3),
+    pwmPadL, H - 2);
+
+  // --- 右侧：3 路平均电压 va/vb/vc ---
+  const vPadL = pwmAreaW + 40, vPadR = 10, vPadT = topH + 32, vPadB = 20;
+  const vW = voltAreaW - vPadL + pwmAreaW - vPadL + (W - pwmAreaW);  // 修正
+  const voltW = W - vPadL - vPadR;
+  const voltH = H - vPadT - vPadB;
+
+  // 标题
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 12px sans-serif';
+  ctxM.fillText('③ 三相平均电压 va/vb/vc', vPadL - 10, topH + 16);
+
+  // 计算三相平均电压（Ta/Tb/Tc 中心化）
+  const vaAvg = res.Ta - 0.5;
+  const vbAvg = res.Tb - 0.5;
+  const vcAvg = res.Tc - 0.5;
+
+  // 绘制 3 条水平线（分别代表 va/vb/vc 的平均值）
+  const voltLanes = [
+    { name: 'va', val: vaAvg, color: '#f85149' },
+    { name: 'vb', val: vbAvg, color: '#3fb950' },
+    { name: 'vc', val: vcAvg, color: '#d29922' },
+  ];
+
+  const vLaneH = voltH / 3;
+  voltLanes.forEach((lane, i) => {
+    const y0 = vPadT + i * vLaneH;
+    const midY = y0 + vLaneH * 0.5;
+
+    // 基线
+    ctxM.strokeStyle = '#21262d';
+    ctxM.lineWidth = 1;
+    ctxM.beginPath(); ctxM.moveTo(vPadL, midY); ctxM.lineTo(vPadL + voltW, midY); ctxM.stroke();
+
+    // 电压水平线（-0.5 到 0.5 范围映射到 laneH*0.4）
+    const val = Math.max(-0.5, Math.min(0.5, lane.val));
+    const voltY = midY - val * vLaneH * 0.8;
+
+    // 粗水平线（当前值）
+    ctxM.strokeStyle = lane.color;
+    ctxM.lineWidth = 3;
+    ctxM.beginPath();
+    ctxM.moveTo(vPadL, voltY);
+    ctxM.lineTo(vPadL + voltW * 0.85, voltY);
+    ctxM.stroke();
+
+    // 小方波示意（"PWM 平均"效果）
+    ctxM.strokeStyle = lane.color + '88';
+    ctxM.lineWidth = 1.5;
+    ctxM.beginPath();
+    const nPulse = 8;
+    const pw = voltW * 0.85 / nPulse;
+    for (let k = 0; k < nPulse; k++) {
+      const px = vPadL + k * pw;
+      const onH = val;
+      if (k === 0) ctxM.moveTo(px, midY);
+      // 高/低
+      ctxM.lineTo(px, midY - 0.5 * vLaneH * 0.8);
+      ctxM.lineTo(px + pw * (onH + 0.5), midY - 0.5 * vLaneH * 0.8);
+      ctxM.lineTo(px + pw * (onH + 0.5), midY + 0.5 * vLaneH * 0.8);
+      ctxM.lineTo(px + pw, midY + 0.5 * vLaneH * 0.8);
+    }
+    ctxM.stroke();
+
+    // 标签
+    ctxM.fillStyle = lane.color;
+    ctxM.font = '10px monospace';
+    ctxM.fillText(lane.name, 8, midY + 4);
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText(lane.val.toFixed(3), vPadL + voltW * 0.87, midY + 4);
+  });
+
+  // 右侧小标题
+  ctxM.fillStyle = '#7d8590';
+  ctxM.font = '10px sans-serif';
+  ctxM.fillText('(平均电压 = 开通时间 − 0.5)·Vdc', vPadL, H - 4);
+}
+
+// --- 4. 6 路 PWM 波形 ---
+function drawPwm(W, H, res) {
+  const padL = 60, padR = 30, padT = 40, padB = 20;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const laneH = plotH / 6;
+
+  const lanes = [
+    { name: 'A↑', duty: res.duty.aUp,      color: '#f85149' },
+    { name: 'A↓', duty: 1 - res.duty.aUp,  color: '#7c3b36' },
+    { name: 'B↑', duty: res.duty.bUp,      color: '#3fb950' },
+    { name: 'B↓', duty: 1 - res.duty.bUp,  color: '#2a6b34' },
+    { name: 'C↑', duty: res.duty.cUp,      color: '#d29922' },
+    { name: 'C↓', duty: 1 - res.duty.cUp,  color: '#8f6a1c' },
+  ];
+
+  ctxM.fillStyle = '#e6edf3'; ctxM.font = 'bold 13px sans-serif';
+  ctxM.fillText('6 路 PWM 波形（一个周期 Ts）', padL, 22);
+  ctxM.fillStyle = '#58a6ff'; ctxM.font = '12px sans-serif';
+  ctxM.fillText('扇区 ' + res.sector, W - 100, 22);
+
+  lanes.forEach((lane, i) => {
+    const y0 = padT + i * laneH;
+    const midY = y0 + laneH * 0.5;
+    const highY = y0 + laneH * 0.15;
+    const lowY = y0 + laneH * 0.85;
+
+    ctxM.strokeStyle = '#21262d';
+    ctxM.beginPath(); ctxM.moveTo(padL, midY); ctxM.lineTo(padL + plotW, midY); ctxM.stroke();
+
+    const onDur = lane.duty * plotW;
+    const startX = padL + (plotW - onDur) / 2;
+    const endX = startX + onDur;
+
+    ctxM.strokeStyle = lane.color; ctxM.lineWidth = 2;
+    ctxM.beginPath();
+    ctxM.moveTo(padL, lowY);
+    ctxM.lineTo(startX, lowY);
+    ctxM.lineTo(startX, highY);
+    ctxM.lineTo(endX, highY);
+    ctxM.lineTo(endX, lowY);
+    ctxM.lineTo(padL + plotW, lowY);
+    ctxM.stroke();
+
+    ctxM.fillStyle = lane.color; ctxM.font = '11px monospace';
+    ctxM.fillText(lane.name, 10, midY + 4);
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText((lane.duty*100).toFixed(0) + '%', padL + plotW + 6, midY + 4);
+  });
+}
+
+// ===== 下方数据画布 =====
+function drawData() {
+  const W = cvData.clientWidth, H = cvData.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxD.clearRect(0, 0, W, H);
+
+  const res = svpwm(state.valpha, state.vbeta, state.Vdc, 1);
+
+  // 画表格
+  const colW = W / 6;
+  const rows = [
+    { label: 'vα', val: state.valpha.toFixed(3), color: '#58a6ff' },
+    { label: 'vβ', val: state.vbeta.toFixed(3), color: '#58a6ff' },
+    { label: '|Vref|', val: res.Vref.toFixed(3), color: '#d2a8ff' },
+    { label: 'θ', val: (res.thetaRef*180/Math.PI).toFixed(1) + '°', color: '#d2a8ff' },
+    { label: '扇区', val: res.sector, color: '#58a6ff' },
+    { label: 'T1', val: res.T1.toFixed(3), color: '#3fb950' },
+    { label: 'T2', val: res.T2.toFixed(3), color: '#d29922' },
+    { label: 'T0', val: res.T0.toFixed(3), color: '#7d8590' },
+    { label: 'Ta', val: res.Ta.toFixed(3), color: '#f85149' },
+    { label: 'Tb', val: res.Tb.toFixed(3), color: '#3fb950' },
+    { label: 'Tc', val: res.Tc.toFixed(3), color: '#d29922' },
+    { label: '6路', val: 'A↑A↓B↑B↓C↑C↓', color: '#7d8590' },
+  ];
+
+  ctxD.font = '11px monospace';
+  const colX = 8;
+  let y = 18;
+  rows.forEach((r, i) => {
+    const col = i % 2;
+    const rowY = 18 + Math.floor(i / 2) * 24;
+    const x = 8 + col * (W / 2);
+
+    ctxD.fillStyle = '#7d8590';
+    ctxD.fillText(r.label + ':', x, rowY);
+    ctxD.fillStyle = r.color;
+    ctxD.fillText(String(r.val), x + 60, rowY);
+  });
+}
+
+function draw() { drawMain(); drawData(); }
+
+window.addEventListener('load', () => { draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  let realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  state.t += realDt;
+  // 动画：vα/vβ 自动旋转
+  const omega = 2 * Math.PI * 0.5;   // 0.5 Hz
+  const mag = Math.hypot(state.valpha, state.vbeta);
+  const angle = state.t * omega;
+  state.valpha = mag * Math.cos(angle);
+  state.vbeta = mag * Math.sin(angle);
+
+  $('s-va').value = state.valpha;
+  $('s-vb').value = state.vbeta;
+  $('v-va').textContent = state.valpha.toFixed(2);
+  $('v-vb').textContent = state.vbeta.toFixed(2);
+
+  const tMax = 5;
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2) + ' s';
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>

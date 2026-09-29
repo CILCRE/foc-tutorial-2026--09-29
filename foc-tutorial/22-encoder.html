@@ -1,0 +1,326 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>22 · 编码器与 θ 获取 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 80px; padding: 6px 10px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .switch-group button.on { background: #f85149; color: #fff; border-color: #f85149; }
+  .compare-table { width:100%; border-collapse:collapse; font-family:monospace; font-size:11px; }
+  .compare-table th, .compare-table td { padding:6px 10px; text-align:left; border-bottom:1px solid #21262d; }
+  .compare-table th { color:#7d8590; font-weight:normal; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>编码器与 θ</h3>
+
+    <div style="background:#f8514922;border-left:3px solid #f85149;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f85149;">第五部分 · 综合与硬件</b><br>
+      θ 从哪来？4 种方案
+    </div>
+
+    <div class="section-title">选择方案</div>
+    <div class="switch-group">
+      <button class="mode-btn on" data-mode="inc" style="flex:1;min-width:80px;">增量式</button>
+      <button class="mode-btn" data-mode="abs">绝对式</button>
+      <button class="mode-btn" data-mode="hall">霍尔</button>
+      <button class="mode-btn" data-mode="sensorless">无感</button>
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="4" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">转速 ω <span id="v-w">5.0</span></div>
+    <input type="range" id="s-w" min="1" max="20" step="0.5" value="5" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#58a6ff;">真实 θ</span><span id="d-ttrue">0.0°</span></div>
+      <div class="row"><span style="color:#3fb950;">测量 θ</span><span id="d-tmeas">0.0°</span></div>
+      <div class="row"><span style="color:#f0b429;">误差</span><span id="d-terr">0.0°</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#d2a8ff;">分辨率</span><span id="d-res">—</span></div>
+    </div>
+
+    <div class="section-title">4 种方案对比</div>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方案</th><th>成本</th><th>精度</th><th>复杂度</th></tr>
+      </thead>
+      <tbody>
+        <tr><td style="color:#58a6ff;">增量式</td><td>低</td><td>高</td><td>中</td></tr>
+        <tr><td style="color:#d2a8ff;">绝对式</td><td>高</td><td>最高</td><td>低</td></tr>
+        <tr><td style="color:#3fb950;">霍尔</td><td>最低</td><td>低</td><td>低</td></tr>
+        <tr><td style="color:#f0b429;">无感</td><td>无</td><td>中</td><td>最高</td></tr>
+      </tbody>
+    </table>
+
+    <div class="hint" style="margin-top:12px;">
+      <b>FOC 必须有 θ</b>（Park 变换用）。<br>
+      有传感器 → 直接测量；<br>
+      无传感器 → 用反电势/电流"观测"出来。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="section-title" style="margin-top:0;" id="view-title">增量式编码器</div>
+      <canvas id="cv-main" data-fit="500"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>θ 从哪来？</b>FOC 的 Park 变换需要转子电角度 θ。θ 的来源有 4 种：<br>
+  <b style="color:#58a6ff;">① 增量式编码器</b>：输出 A/B/Z 脉冲，MCU 计数得到 θ。分辨率高，成本中等，需"找零"启动。<br>
+  <b style="color:#d2a8ff;">② 绝对式编码器</b>：直接输出绝对角度（并行/串行）。精度最高，成本高，上电即知 θ。<br>
+  <b style="color:#3fb950;">③ 霍尔传感器</b>：3 个霍尔输出 6 个状态，每个状态 60°，用插值得到连续 θ。成本最低，精度差。<br>
+  <b style="color:#f0b429;">④ 无感（观测器）</b>：不用传感器，用反电势/电流估算 θ。成本最低，但低速时精度差。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 0.5,
+  w: 5,
+  mode: 'inc',
+};
+
+const $ = id => document.getElementById(id);
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-w').oninput = e => { state.w = +e.target.value; $('v-w').textContent = state.w.toFixed(1); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+$('btn-reset').onclick = () => {
+  state.t = 0;
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 播放动画';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.mode-btn').forEach(b => {
+      b.classList.remove('on');
+      b.style.background = '#21262d';
+      b.style.color = '#7d8590';
+      b.style.borderColor = '#30363d';
+    });
+    btn.classList.add('on');
+    btn.style.background = '#f85149';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#f85149';
+    state.mode = btn.dataset.mode;
+    const titles = {
+      inc: '增量式编码器（A/B/Z 脉冲）',
+      abs: '绝对式编码器（直接读角度）',
+      hall: '霍尔传感器（6 状态）',
+      sensorless: '无感（观测器估算）'
+    };
+    $('view-title').textContent = titles[state.mode];
+    draw();
+  };
+});
+
+// 真实 θ
+function getTrueTheta(t) {
+  return t * state.w;   // rad
+}
+
+// 测量 θ（根据模式）
+function getMeasuredTheta(trueTheta, mode) {
+  const norm = ((trueTheta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  if (mode === 'abs') {
+    // 绝对式：精确到 12 位（约 0.088°）
+    const resolution = 2 * Math.PI / 4096;
+    return Math.round(norm / resolution) * resolution;
+  } else if (mode === 'inc') {
+    // 增量式：精确到 1000 线 × 4 = 4000 脉冲
+    const resolution = 2 * Math.PI / 4000;
+    return Math.round(norm / resolution) * resolution;
+  } else if (mode === 'hall') {
+    // 霍尔：60° 量化
+    const sector = Math.floor(norm / (Math.PI / 3));
+    return sector * (Math.PI / 3) + Math.PI / 6;   // 用扇区中点近似
+  } else {
+    // 无感：低速误差大
+    const err = Math.sin(trueTheta * 10) * 0.3;   // 模拟观测误差
+    return norm + err;
+  }
+}
+
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function draw() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const r = Math.min(W, H) * 0.32;
+
+  const trueTheta = getTrueTheta(state.t);
+  const measuredTheta = getMeasuredTheta(trueTheta, state.mode);
+
+  // 圆盘
+  ctx.fillStyle = '#161b22';
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+
+  // 刻度线（24 等分）
+  ctx.strokeStyle = '#484f58';
+  ctx.lineWidth = 1;
+  for (let k = 0; k < 24; k++) {
+    const ang = k * (2*Math.PI / 24) - Math.PI/2;
+    const x1 = cx + Math.cos(ang) * r * 0.9;
+    const y1 = cy + Math.sin(ang) * r * 0.9;
+    const x2 = cx + Math.cos(ang) * r;
+    const y2 = cy + Math.sin(ang) * r;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+
+  // 真实 θ 指针（蓝）
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 4;
+  const trueAng = trueTheta - Math.PI/2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(trueAng) * r * 0.8, cy + Math.sin(trueAng) * r * 0.8);
+  ctx.stroke();
+  // 真实 θ 圆点
+  ctx.fillStyle = '#58a6ff';
+  ctx.beginPath(); ctx.arc(cx + Math.cos(trueAng) * r * 0.8, cy + Math.sin(trueAng) * r * 0.8, 5, 0, 2*Math.PI); ctx.fill();
+
+  // 测量 θ 指针（绿/黄/红，根据模式）
+  const measColor = { inc: '#3fb950', abs: '#d2a8ff', hall: '#3fb950', sensorless: '#f0b429' }[state.mode];
+  const measAng = measuredTheta - Math.PI/2;
+  ctx.strokeStyle = measColor;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5,3]);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(measAng) * r * 0.8, cy + Math.sin(measAng) * r * 0.8);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 中心点
+  ctx.fillStyle = '#e6edf3';
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2*Math.PI); ctx.fill();
+
+  // 角度弧线（真实）
+  ctx.strokeStyle = '#58a6ff66';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.4, -Math.PI/2, trueAng, false);
+  ctx.stroke();
+
+  // 顶部信息
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('θ 测量示意图', 20, 26);
+  ctx.font = '12px monospace';
+  ctx.fillStyle = '#58a6ff';
+  ctx.fillText('真实 θ = ' + (trueTheta * 180 / Math.PI % 360).toFixed(1) + '°', 20, 46);
+  ctx.fillStyle = measColor;
+  ctx.fillText('测量 θ = ' + (measuredTheta * 180 / Math.PI % 360).toFixed(1) + '°', 20, 64);
+  const errDeg = ((measuredTheta - trueTheta) * 180 / Math.PI) % 360;
+  ctx.fillStyle = '#f0b429';
+  ctx.fillText('误差 = ' + errDeg.toFixed(2) + '°', 20, 82);
+
+  // 右下：模式说明
+  ctx.fillStyle = '#7d8590'; ctx.font = '11px sans-serif';
+  const desc = {
+    inc: '增量式：计数脉冲，分辨率高',
+    abs: '绝对式：直接读，精度最高',
+    hall: '霍尔：60° 量化，误差大',
+    sensorless: '无感：估算，低速误差大'
+  }[state.mode];
+  ctx.fillText(desc, 20, H - 30);
+
+  // 更新数值
+  $('d-ttrue').textContent = (trueTheta * 180 / Math.PI % 360).toFixed(1) + '°';
+  $('d-tmeas').textContent = (measuredTheta * 180 / Math.PI % 360).toFixed(1) + '°';
+  $('d-terr').textContent = errDeg.toFixed(2) + '°';
+  $('d-res').textContent = {
+    inc: '4000 脉冲/圈',
+    abs: '12 位（4096）',
+    hall: '60° 量化',
+    sensorless: '动态（±5°）'
+  }[state.mode];
+}
+
+window.addEventListener('load', () => { draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = 4;
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>

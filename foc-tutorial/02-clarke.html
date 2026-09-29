@@ -1,0 +1,378 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>02 · Clarke 变换 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #30363d; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>参数控制</h3>
+
+    <div class="ctrl">
+      <label>时间 t <span id="v-t">0.00 s</span></label>
+      <input type="range" id="s-t" min="0" max="2" step="0.001" value="0">
+    </div>
+
+    <div class="ctrl">
+      <label>电流幅值 I <span id="v-I">1.00</span></label>
+      <input type="range" id="s-I" min="0.2" max="1.5" step="0.01" value="1">
+    </div>
+
+    <div class="ctrl">
+      <label>电频率 f <span id="v-f">1.00 Hz</span></label>
+      <input type="range" id="s-f" min="0.1" max="3" step="0.05" value="1">
+    </div>
+
+    <div class="ctrl">
+      <label>动画速度 <span id="v-sp">0.5×</span></label>
+      <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5">
+    </div>
+
+    <div class="ctrl">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+    </div>
+
+    <div class="ctrl" style="margin-top:20px;">
+      <label style="font-size:13px;">
+        <input type="checkbox" id="ck-show-phase" checked style="accent-color:#58a6ff;">
+        &nbsp;显示三相分量
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="font-size:13px;">
+        <input type="checkbox" id="ck-show-alphabeta" checked style="accent-color:#58a6ff;">
+        &nbsp;显示 α-β 分量
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="font-size:13px;">
+        <input type="checkbox" id="ck-show-result" checked style="accent-color:#58a6ff;">
+        &nbsp;显示合成矢量
+      </label>
+    </div>
+
+    <div style="font-size:12px;color:#7d8590;margin-top:20px;line-height:1.9;">
+      <div>iα = ia</div>
+      <div>iβ = (ia + 2·ib) / √3</div>
+    </div>
+
+    <div style="margin-top:14px;padding:10px;background:#d2a8ff22;border-left:3px solid #d2a8ff;border-radius:4px;font-size:11px;color:#d2a8ff;line-height:1.7;">
+      <b>⚠ 显示说明</b><br>
+      三相真实合成 = 1.5·I<br>
+      α-β 合成 = 1.0·I<br>
+      为便于对比，左图箭头<br>已 ÷1.5 与右图等长
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-vec" data-fit="440"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">变换前 · 三相电流 (ia, ib, ic)</div>
+      <canvas id="cv-wave-abc" data-fit="180"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">变换后 · 两相静止坐标 (iα, iβ)</div>
+      <canvas id="cv-wave-ab" data-fit="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>知识点：</b>三相电流其实只有<b>两个自由度</b>（因为 ia+ib+ic=0），所以可以用两个正交分量
+  <span class="formula">iα、iβ</span> 完全描述。Clarke 变换就是把(a,b,c)投影到静止的 α-β 平面：
+  <span class="formula">iα = ia，iβ = (ia + 2·ib)/√3</span>。
+  变换后，<b>三个脉振矢量合成的旋转矢量不变</b>，但坐标从三维降到二维。
+  <b>注意：</b>左侧三相的真实几何合成幅值是 1.5·I，右侧 α-β 合成的幅值是 1.0·I，
+  两者方向完全一致，只是长度不同（等幅值 Clarke 变换特性）。为便于对比，图中左右箭头已归一化为等长。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+const state = { t: 0, I: 1, f: 1, speed: 0.5, playing: false };
+
+const $ = id => document.getElementById(id);
+const sT = $('s-t'), sI = $('s-I'), sF = $('s-f'), sSp = $('s-sp');
+
+sT.oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+sI.oninput = e => { state.I = +e.target.value; $('v-I').textContent = state.I.toFixed(2); draw(); };
+sF.oninput = e => { state.f = +e.target.value; $('v-f').textContent = state.f.toFixed(2)+' Hz'; syncTimeRange(); draw(); };
+sSp.oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+$('ck-show-phase').onchange = draw;
+$('ck-show-alphabeta').onchange = draw;
+$('ck-show-result').onchange = draw;
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+  if (state.playing) { lastT = performance.now(); loop(); }
+};
+
+function waveTimeMax(f) { return Math.max(1, 2 / f); }
+function syncTimeRange() {
+  const tMax = waveTimeMax(state.f);
+  sT.max = tMax;
+  if (state.t > tMax) state.t = tMax;
+}
+
+function phaseCurrents(t, I, f) {
+  const th = 2 * Math.PI * f * t;
+  return {
+    ia: I * Math.cos(th),
+    ib: I * Math.cos(th - D2R(120)),
+    ic: I * Math.cos(th + D2R(120)),
+    th
+  };
+}
+
+function clarke(ia, ib, ic) {
+  const ialpha = ia;
+  const ibeta  = (ia + 2*ib) / Math.sqrt(3);
+  return { ialpha, ibeta };
+}
+
+const cvV = $('cv-vec'), ctxV = cvV.getContext('2d');
+const cvWA = $('cv-wave-abc'), ctxWA = cvWA.getContext('2d');
+const cvWB = $('cv-wave-ab'),  ctxWB = cvWB.getContext('2d');
+
+function drawVectors() {
+  const W = cvV.clientWidth, H = cvV.clientHeight;
+  ctxV.clearRect(0, 0, W, H);
+
+  const gap = 40;
+  const halfW = (W - gap) / 2;
+  const cxA = halfW / 2, cyA = H / 2;
+  const cxB = halfW + gap + halfW / 2, cyB = H / 2;
+  const scale = Math.min(halfW, H) * 0.32;
+
+  const { ia, ib, ic } = phaseCurrents(state.t, state.I, state.f);
+  const { ialpha, ibeta } = clarke(ia, ib, ic);
+
+  drawCircleGrid(ctxV, cxA, cyA, scale);
+  drawAxis(ctxV, cxA, cyA, halfW, H);
+
+  // 三相轴位置：A=0°, B=120°, C=240°（此页保持传统 Clarke 定义）
+  const axes = [
+    { name: 'A', ang: 0,   color: '#f85149', i: ia },
+    { name: 'B', ang: 120, color: '#3fb950', i: ib },
+    { name: 'C', ang: 240, color: '#d29922', i: ic },
+  ];
+
+  if ($('ck-show-phase').checked) {
+    axes.forEach(a => {
+      const rad = D2R(a.ang);
+      ctxV.setLineDash([4,4]); ctxV.strokeStyle = a.color + '40';
+      ctxV.beginPath();
+      ctxV.moveTo(cxA, cyA);
+      ctxV.lineTo(cxA + Math.cos(rad)*scale*1.5, cyA - Math.sin(rad)*scale*1.5);
+      ctxV.stroke(); ctxV.setLineDash([]);
+      ctxV.fillStyle = a.color; ctxV.font = '12px sans-serif';
+      ctxV.fillText(a.name,
+        cxA + Math.cos(rad)*scale*1.6 - 4,
+        cyA - Math.sin(rad)*scale*1.6 + 4);
+      arrow(ctxV, cxA, cyA,
+        cxA + Math.cos(rad)*a.i*scale,
+        cyA - Math.sin(rad)*a.i*scale,
+        a.color, 2.5, 8);
+    });
+  }
+
+  // ★ 新增：左侧三相合成箭头（几何合成，但长度归一化 /1.5 与右侧对齐）
+  if ($('ck-show-result').checked) {
+    let sx = 0, sy = 0;
+    axes.forEach(a => {
+      const rad = D2R(a.ang);
+      sx += Math.cos(rad) * a.i;
+      sy += Math.sin(rad) * a.i;
+    });
+    // 几何合成幅值 = 1.5·I（等幅值 Clarke 的三相合成），除以 1.5 归一化到 1.0·I
+    const normX = sx / 1.5;
+    const normY = sy / 1.5;
+    const ex = cxA + normX * scale;
+    const ey = cyA - normY * scale;
+    arrow(ctxV, cxA, cyA, ex, ey, '#58a6ff', 4, 12);
+    ctxV.fillStyle = '#58a6ff'; ctxV.font = 'bold 12px sans-serif';
+    ctxV.fillText('合成', ex + 8, ey - 4);
+  }
+
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('三相 (a, b, c)', cxA - 40, 20);
+
+  const arrowX = halfW + gap/2;
+  ctxV.strokeStyle = '#58a6ff'; ctxV.lineWidth = 2;
+  ctxV.beginPath(); ctxV.moveTo(arrowX - 12, H/2); ctxV.lineTo(arrowX + 12, H/2); ctxV.stroke();
+  ctxV.beginPath();
+  ctxV.moveTo(arrowX + 12, H/2);
+  ctxV.lineTo(arrowX + 4, H/2 - 5);
+  ctxV.lineTo(arrowX + 4, H/2 + 5);
+  ctxV.closePath(); ctxV.fillStyle = '#58a6ff'; ctxV.fill();
+  ctxV.font = '11px sans-serif'; ctxV.fillStyle = '#58a6ff';
+  ctxV.fillText('Clarke', arrowX - 20, H/2 - 12);
+
+  drawCircleGrid(ctxV, cxB, cyB, scale);
+  drawAxis(ctxV, cxB, cyB, halfW, H);
+
+  ctxV.fillStyle = '#58a6ff'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('α', cxB + scale*1.5 + 4, cyB + 4);
+  ctxV.fillText('β', cxB + 4, cyB - scale*1.5 - 4);
+
+  if ($('ck-show-alphabeta').checked) {
+    arrow(ctxV, cxB, cyB, cxB + ialpha*scale, cyB, '#58a6ff', 2.5, 8);
+    arrow(ctxV, cxB, cyB, cxB, cyB - ibeta*scale, '#d2a8ff', 2.5, 8);
+  }
+
+  if ($('ck-show-result').checked) {
+    const ex2 = cxB + ialpha*scale;
+    const ey2 = cyB - ibeta*scale;
+    arrow(ctxV, cxB, cyB, ex2, ey2, '#f0f6fc', 3.5, 11);
+    ctxV.fillStyle = '#f0f6fc'; ctxV.font = 'bold 12px sans-serif';
+    ctxV.fillText('合成', ex2 + 8, ey2 - 4);
+  }
+
+  ctxV.fillStyle = '#7d8590'; ctxV.font = '13px sans-serif';
+  ctxV.fillText('α-β (静止两相)', cxB - 50, 20);
+
+  ctxV.font = '12px monospace'; ctxV.fillStyle = '#7d8590';
+  ctxV.fillText('iα = ' + ialpha.toFixed(3), cxB - halfW/2 + 10, H - 30);
+  ctxV.fillText('iβ = ' + ibeta.toFixed(3),  cxB - halfW/2 + 10, H - 12);
+}
+
+function drawCircleGrid(ctx, cx, cy, scale) {
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let r = 1; r <= 4; r++) {
+    ctx.beginPath(); ctx.arc(cx, cy, scale*r/2, 0, 2*Math.PI); ctx.stroke();
+  }
+}
+function drawAxis(ctx, cx, cy, w, h) {
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - w*0.45, cy); ctx.lineTo(cx + w*0.45, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - h*0.4); ctx.lineTo(cx, cy + h*0.4); ctx.stroke();
+}
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len * 0.3));   // ★ 38：自适应
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawWaveCanvas(ctx, cv, curves, ampScale) {
+  const W = cv.clientWidth, H = cv.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  const pad = 30, midY = H/2;
+  const tMax = waveTimeMax(state.f);
+
+  ctx.strokeStyle = '#30363d';
+  ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(W-pad, midY); ctx.stroke();
+
+  ctx.fillStyle = '#7d8590'; ctx.font = '10px sans-serif';
+  for (let k = 0; k <= 4; k++) {
+    const x = pad + (W-2*pad) * k/4;
+    ctx.fillText((k*tMax/4).toFixed(2)+'s', x-14, H-6);
+  }
+
+  const xNow = pad + (W-2*pad) * (state.t / tMax);
+  const amp = (H/2 - 20) * (ampScale || 1);
+
+  curves.forEach(cur => {
+    ctx.strokeStyle = cur.color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let px = 0; px <= W-2*pad; px++) {
+      const tt = (px / (W-2*pad)) * tMax;
+      const val = cur.fn(tt);
+      const x = pad + px, y = midY - val * amp;
+      if (px === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  curves.forEach(cur => {
+    const val = cur.fn(state.t);
+    const y = midY - val * amp;
+    ctx.fillStyle = cur.color;
+    ctx.beginPath(); ctx.arc(xNow, y, 4, 0, 2*Math.PI); ctx.fill();
+  });
+
+  ctx.strokeStyle = '#58a6ff'; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xNow, 6); ctx.lineTo(xNow, H-6); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = '11px sans-serif';
+  let lx = pad + 6;
+  curves.forEach(cur => {
+    ctx.fillStyle = cur.color;
+    ctx.fillText(cur.label, lx, 14);
+    lx += 34;
+  });
+}
+
+function drawWaveABC() {
+  const { I, f } = state;
+  const curves = [
+    { color: '#f85149', label: 'ia', fn: t => I * Math.cos(2*Math.PI*f*t) },
+    { color: '#3fb950', label: 'ib', fn: t => I * Math.cos(2*Math.PI*f*t - D2R(120)) },
+    { color: '#d29922', label: 'ic', fn: t => I * Math.cos(2*Math.PI*f*t + D2R(120)) },
+  ];
+  drawWaveCanvas(ctxWA, cvWA, curves, 1);
+}
+
+function drawWaveAB() {
+  const { I, f } = state;
+  const curves = [
+    { color: '#58a6ff', label: 'iα', fn: t => {
+      const th = 2*Math.PI*f*t;
+      const ia = I*Math.cos(th), ib = I*Math.cos(th - D2R(120)), ic = I*Math.cos(th + D2R(120));
+      return clarke(ia, ib, ic).ialpha;
+    }},
+    { color: '#d2a8ff', label: 'iβ', fn: t => {
+      const th = 2*Math.PI*f*t;
+      const ia = I*Math.cos(th), ib = I*Math.cos(th - D2R(120)), ic = I*Math.cos(th + D2R(120));
+      return clarke(ia, ib, ic).ibeta;
+    }},
+  ];
+  drawWaveCanvas(ctxWB, cvWB, curves, 1);
+}
+
+function draw() { drawVectors(); drawWaveABC(); drawWaveAB(); }
+
+window.addEventListener('load', () => { syncTimeRange(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = waveTimeMax(state.f);
+  if (state.t > tMax) state.t -= tMax;
+  sT.value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+syncTimeRange();
+draw();
+</script>
+</body>
+</html>

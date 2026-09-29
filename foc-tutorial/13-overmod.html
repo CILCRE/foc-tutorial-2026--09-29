@@ -1,0 +1,320 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>13 · 过调制 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .alert-box { background:#f8514922; border-left:3px solid #f85149; border-radius:4px; padding:10px; margin-bottom:12px; font-size:11px; line-height:1.7; color:#f85149; }
+  .ok-box { background:#3fb95022; border-left:3px solid #3fb950; border-radius:4px; padding:10px; margin-bottom:12px; font-size:11px; line-height:1.7; color:#3fb950; }
+  .regions-card { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>过调制</h3>
+
+    <div style="background:#f0b42922;border-left:3px solid #f0b429;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f0b429;">第二部分 · SVPWM</b><br>
+      超出六边形会发生什么？
+    </div>
+
+    <div class="section-title">时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="4" step="0.001" value="0" style="width:100%;">
+
+    <div class="section-title">矢量幅值 |Vref| <span id="v-mag">0.50</span></div>
+    <input type="range" id="s-mag" min="0.1" max="1.0" step="0.01" value="0.5" style="width:100%;">
+
+    <div class="section-title">Vdc <span id="v-vdc">1.00</span></div>
+    <input type="range" id="s-vdc" min="0.5" max="2" step="0.05" value="1" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">0.5×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="2" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 播放动画</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:16px;">区域提示</div>
+    <div id="region-alert" class="ok-box">
+      ✓ 线性调制区<br>
+      参考矢量在六边形内，SVPWM 能精确合成。
+    </div>
+
+    <div class="section-title">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#58a6ff;">|Vref|</span><span id="v-vref">0.000</span></div>
+      <div class="row"><span style="color:#3fb950;">内切圆半径</span><span id="v-rin">0.577</span></div>
+      <div class="row"><span style="color:#7d8590;">六边形顶点</span><span id="v-rout">0.667</span></div>
+      <div class="row"><span style="color:#d29922;">状态</span><span id="v-state">线性</span></div>
+    </div>
+
+    <div class="section-title">两个边界</div>
+    <div class="regions-card">
+      <div style="color:#3fb950;">▸ 内切圆：Vdc/√3 ≈ 0.577·Vdc</div>
+      <div style="color:#7d8590;font-size:10px;margin-left:12px;">此值以内 → 一定是线性调制</div>
+      <div style="color:#f85149;margin-top:8px;">▸ 六边形顶点：2/3·Vdc ≈ 0.667·Vdc</div>
+      <div style="color:#7d8590;font-size:10px;margin-left:12px;">超过此值 → 无法合成</div>
+      <div style="color:#d29922;margin-top:8px;">▸ 中间区（0.577 ~ 0.667）</div>
+      <div style="color:#7d8590;font-size:10px;margin-left:12px;">六边形外，内切圆外 → 部分方向过调制</div>
+    </div>
+
+    <div class="hint">
+      <b>为什么不能无限大？</b>逆变器只有 6 个基本矢量，它们的"包络"就是六边形。
+      参考矢量超出六边形，物理上做不到——只能"就近取"，输出会失真。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="600"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>过调制是什么：</b>SVPWM 的六边形代表"逆变器能输出的电压矢量范围"。<br>
+  <b>内切圆半径</b> = <span style="font-family:monospace;color:#3fb950;">Vdc/√3 ≈ 0.577·Vdc</span>——此值以内，任何方向的矢量都能精确合成（线性调制区）。<br>
+  <b>六边形顶点</b> = <span style="font-family:monospace;color:#f85149;">2/3·Vdc ≈ 0.667·Vdc</span>——超过此值，任何方向都做不到。<br>
+  介于两者之间（0.577~0.667），某些方向能做到、某些做不到——这就是<b>过调制区</b>。<br>
+  <b>实际影响</b>：过调制会导致电压波形失真、电流谐波增大、转矩波动。工程上通常限制 |Vref| ≤ Vdc/√3 以保持线性。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const BASE_VECTORS = [
+  { id: 1, angDeg:   0 }, { id: 2, angDeg:  60 }, { id: 3, angDeg: 120 },
+  { id: 4, angDeg: 180 }, { id: 5, angDeg: 240 }, { id: 6, angDeg: 300 },
+];
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 0.5,
+  mag: 0.5,
+  Vdc: 1.0,
+};
+
+const $ = id => document.getElementById(id);
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-mag').oninput = e => { state.mag = +e.target.value; $('v-mag').textContent = state.mag.toFixed(2); draw(); };
+$('s-vdc').oninput = e => { state.Vdc = +e.target.value; $('v-vdc').textContent = state.Vdc.toFixed(2); draw(); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 播放动画';
+};
+
+$('btn-reset').onclick = () => {
+  state.t = 0;
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 播放动画';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+function getVref(t) {
+  const omega = 2 * Math.PI * 0.25;
+  const th = t * omega;
+  return {
+    valpha: state.mag * Math.cos(th),
+    vbeta:  state.mag * Math.sin(th),
+  };
+}
+
+// 判断点是否在六边形内
+function isInsideHexagon(x, y, r) {
+  for (let k = 0; k < 6; k++) {
+    const a1 = D2R(k * 60), a2 = D2R((k + 1) * 60);
+    const x1 = Math.cos(a1) * r, y1 = Math.sin(a1) * r;
+    const x2 = Math.cos(a2) * r, y2 = Math.sin(a2) * r;
+    const nx = -(y2 - y1), ny = (x2 - x1);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    if ((x - mx) * nx + (y - my) * ny > 1e-6) return false;
+  }
+  return true;
+}
+
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function draw() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+
+  const { valpha, vbeta } = getVref(state.t);
+  const vrefMag = Math.hypot(valpha, vbeta);
+
+  // 六边形半径（屏幕像素）
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.36;
+
+  // Vdc 归一化：Vdc=1 时，六边形顶点 = 2/3 ≈ 0.667 物理单位
+  // 屏幕：r 像素 = 2/3 物理单位
+  const pixPerUnit = r / (2/3);
+  const rInscribed = r * (Math.sqrt(3)/2);   // 内切圆半径（像素）
+
+  // 计算是否过调制
+  const px = valpha * pixPerUnit;
+  const py = vbeta * pixPerUnit;
+  const overMod = !isInsideHexagon(px, py, r);
+
+  // ===== 六边形 =====
+  ctx.strokeStyle = overMod ? '#f85149' : '#30363d';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  BASE_VECTORS.forEach((v, i) => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.closePath(); ctx.stroke();
+
+  // 内切圆（虚线）
+  ctx.strokeStyle = '#3fb95044';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.arc(cx, cy, rInscribed, 0, 2*Math.PI); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 6 个基本矢量顶点
+  BASE_VECTORS.forEach(v => {
+    const rad = D2R(v.angDeg);
+    const x = cx + Math.cos(rad) * r;
+    const y = cy - Math.sin(rad) * r;
+    ctx.fillStyle = '#484f58';
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle = '#7d8590'; ctx.font = '11px sans-serif';
+    ctx.fillText('V' + v.id, x + 8, y + 4);
+  });
+
+  // 原点
+  ctx.fillStyle = '#e6edf3';
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2*Math.PI); ctx.fill();
+
+  // Vref 矢量
+  let arrowColor;
+if (overMod) {
+  arrowColor = '#f85149';   // 红：过调制
+} else if (vrefMag > state.Vdc / Math.sqrt(3)) {
+  arrowColor = '#d29922';   // 黄：部分过调制（内切圆外）
+} else {
+  arrowColor = '#3fb950';   // 绿：线性区
+}
+const color = arrowColor;
+  arrow(ctx, cx, cy, cx + px, cy - py, color, 4, 12);
+
+  // 是否超出内切圆但还在六边形内 → 部分过调制（黄）
+  if (!overMod && vrefMag > state.Vdc / Math.sqrt(3)) {
+    // 在内切圆外但在六边形内 —— 部分方向过调制
+    ctx.fillStyle = '#d29922';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('⚠ 内切圆外（部分方向过调制）', 20, H - 20);
+  } else if (overMod) {
+    ctx.fillStyle = '#f85149';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText('⚠ 过调制（超出六边形）', 20, H - 20);
+  } else {
+    ctx.fillStyle = '#3fb950';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('✓ 线性调制区', 20, H - 20);
+  }
+
+  // 左上信息
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('过调制示意图', 20, 26);
+  ctx.font = '12px monospace';
+  ctx.fillStyle = '#7d8590';
+  ctx.fillText('Vdc = ' + state.Vdc.toFixed(2), 20, 44);
+  ctx.fillText('|Vref| = ' + vrefMag.toFixed(3), 20, 60);
+  ctx.fillStyle = '#3fb950';
+  ctx.fillText('内切圆 = ' + (state.Vdc/Math.sqrt(3)).toFixed(3), 20, 76);
+  ctx.fillStyle = '#f85149';
+  ctx.fillText('顶点 = ' + (state.Vdc*2/3).toFixed(3), 20, 92);
+
+  // 更新侧栏
+  $('v-vref').textContent = vrefMag.toFixed(3);
+  $('v-rin').textContent = (state.Vdc/Math.sqrt(3)).toFixed(3);
+  $('v-rout').textContent = (state.Vdc*2/3).toFixed(3);
+
+  const alert = $('region-alert');
+  if (overMod) {
+    $('v-state').textContent = '过调制';
+    $('v-state').style.color = '#f85149';
+    alert.className = 'alert-box';
+    alert.innerHTML = '⚠ 过调制<br>参考矢量超出六边形，SVPWM 无法精确合成——输出会失真（电压波形畸变、电流谐波增大）。';
+  } else if (vrefMag > state.Vdc / Math.sqrt(3)) {
+    $('v-state').textContent = '部分过调';
+    $('v-state').style.color = '#d29922';
+    alert.className = 'alert-box';
+    alert.style.borderLeftColor = '#d29922';
+    alert.style.color = '#d29922';
+    alert.style.background = '#d2992222';
+    alert.innerHTML = '⚠ 部分方向过调制<br>矢量超出内切圆但还在六边形内。某些方向能精确合成，某些不能。';
+  } else {
+    $('v-state').textContent = '线性';
+    $('v-state').style.color = '#3fb950';
+    alert.className = 'ok-box';
+    alert.innerHTML = '✓ 线性调制区<br>参考矢量在内切圆内，SVPWM 能精确合成——电压波形无失真。';
+  }
+}
+
+window.addEventListener('load', () => { draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  state.t += (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  const tMax = 4;
+  if (state.t > tMax) state.t -= tMax;
+  $('s-t').value = state.t;
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>

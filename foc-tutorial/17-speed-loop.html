@@ -1,0 +1,413 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>17 · 速度环 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>速度环</h3>
+
+    <div style="background:#3fb95022;border-left:3px solid #3fb950;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#3fb950;">第三部分 · 控制</b><br>
+      外环 · 中速的环
+    </div>
+
+    <div class="section-title">仿真时间 t <span id="v-t">0.00 s</span></div>
+    <input type="range" id="s-t" min="0" max="5" step="0.01" value="0" style="width:100%;">
+
+    <div class="section-title">给定转速 ω_ref <span id="v-wref">15.00</span></div>
+    <input type="range" id="s-wref" min="0" max="30" step="0.5" value="15" style="width:100%;">
+
+    <div class="section-title">负载转矩 TL <span id="v-tl">0.00</span></div>
+    <input type="range" id="s-tl" min="0" max="0.5" step="0.01" value="0" style="width:100%;">
+    <div class="switch-group" style="display:flex;gap:6px;margin-top:6px;">
+      <button id="btn-load-up" style="flex:1;padding:6px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">+ 加负载</button>
+      <button id="btn-load-zero" style="flex:1;padding:6px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;font-size:12px;cursor:pointer;">归零</button>
+    </div>
+
+    <div class="section-title">速度环 Kp_w <span id="v-kpw">0.50</span></div>
+    <input type="range" id="s-kpw" min="0.05" max="5" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="section-title">速度环 Ki_w <span id="v-kiw">2.00</span></div>
+    <input type="range" id="s-kiw" min="0" max="20" step="0.1" value="2" style="width:100%;">
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 开始仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值</div>
+    <div class="info-box">
+      <div class="row"><span style="color:#58a6ff;">ω_ref</span><span id="d-wref">0.000</span></div>
+      <div class="row"><span style="color:#58a6ff;">ω_act</span><span id="d-wact">0.000</span></div>
+      <div class="row"><span style="color:#f0b429;">Δω</span><span id="d-err">0.000</span></div>
+      <div style="border-top:1px solid #21262d;margin:6px 0;padding-top:6px;"></div>
+      <div class="row"><span style="color:#d29922;">iq_ref</span><span id="d-iqref">0.000</span></div>
+      <div class="row"><span style="color:#d29922;">iq</span><span id="d-iq">0.000</span></div>
+      <div class="row"><span style="color:#f85149;">Te</span><span id="d-te">0.000</span></div>
+    </div>
+
+    <div class="section-title">速度环原理</div>
+    <div class="hint">
+      <b>外环</b>（中速，带宽 ~1kHz）：<br>
+      目标：让 <b>ω</b> 精确跟踪 <b>ω_ref</b>。<br>
+      <br>
+      一个 PI：<br>
+      <span style="font-family:monospace;">iq_ref = Kp_w·e_ω + Ki_w·∫e_ω</span><br>
+      <br>
+      输出 <b>iq_ref</b> 给电流环。<br>
+      <br>
+      <b style="color:#d2a8ff;">响应比电流环慢</b>——但比电流环"看得远"（管转速，不只管电流）。
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <canvas id="cv-main" data-fit="300"></canvas>
+    </div>
+    <div class="stage" style="margin-top:16px;">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:6px;">转速跟踪</div>
+      <canvas id="cv-wave" data-fit="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>速度环（外环）：</b>双闭环的外层，带宽比电流环低（~1 kHz）。<br>
+  它的任务：让<b>转速</b>精确跟踪目标。<b>输入</b>是 ω_ref − ω（转速误差），<b>输出</b>是 iq_ref（电流指令），
+  交给电流环去执行。<br>
+  <b>关键对比</b>：和 15 页开环对比——开环转速有静差（追不上），
+  速度环（闭环）能精确跟踪（无静差）。<br>
+  <b>注意</b>：速度环的输出是 iq_ref，所以速度环的 Kp_w/Ki_w 会直接影响 iq 的指令大小——
+  调不好会导致震荡或响应慢。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 1.0,
+  w_ref: 15,
+  TL: 0,
+  Kp_w: 0.5,
+  Ki_w: 2.0,
+  // 电流环固定参数（不给调）
+  Kp_c: 10, Ki_c: 200,
+  motor: null,
+  pi_w: null, pi_d: null, pi_q: null,
+  history: [],
+  dt: 0.0005,
+  lastData: null,
+};
+
+const $ = id => document.getElementById(id);
+
+function resetSim() {
+  state.motor = FOC_MOTOR.createState();
+  state.pi_w = FOC_MOTOR.createPIController(state.Kp_w, state.Ki_w);
+  state.pi_d = FOC_MOTOR.createPIController(state.Kp_c, state.Ki_c);
+  state.pi_q = FOC_MOTOR.createPIController(state.Kp_c, state.Ki_c);
+  state.t = 0;
+  state.history = [];
+  state.lastData = { omega: 0, w_ref: state.w_ref, iq_ref: 0, iq: 0, Te: 0, TL: state.TL };
+  $('s-t').value = 0;
+  $('v-t').textContent = '0.00 s';
+}
+
+$('s-t').oninput = e => { state.t = +e.target.value; $('v-t').textContent = state.t.toFixed(2)+' s'; draw(); };
+$('s-wref').oninput = e => { state.w_ref = +e.target.value; $('v-wref').textContent = state.w_ref.toFixed(2); };
+$('s-tl').oninput = e => { state.TL = +e.target.value; $('v-tl').textContent = state.TL.toFixed(2); };
+$('s-kpw').oninput = e => {
+  state.Kp_w = +e.target.value; $('v-kpw').textContent = state.Kp_w.toFixed(2);
+  if (state.pi_w) state.pi_w.kp = state.Kp_w;
+};
+$('s-kiw').oninput = e => {
+  state.Ki_w = +e.target.value; $('v-kiw').textContent = state.Ki_w.toFixed(2);
+  if (state.pi_w) state.pi_w.ki = state.Ki_w;
+};
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-load-up').onclick = () => {
+  state.TL = Math.min(0.5, state.TL + 0.15);
+  $('s-tl').value = state.TL;
+  $('v-tl').textContent = state.TL.toFixed(2);
+};
+$('btn-load-zero').onclick = () => {
+  state.TL = 0;
+  $('s-tl').value = 0;
+  $('v-tl').textContent = '0.00';
+};
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 开始仿真';
+};
+
+$('btn-reset').onclick = () => {
+  resetSim();
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 开始仿真';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  draw();
+};
+
+// ===== 仿真一步：双闭环 =====
+function stepOnce() {
+  const dt = state.dt;
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  const m = state.motor;
+
+  // 速度环
+  const e_w = state.w_ref - m.omega_m;
+  const iq_ref = FOC_MOTOR.stepPI(state.pi_w, e_w, dt, 1.5);
+  const id_ref = 0;
+
+  // 电流环
+  const e_id = id_ref - m.id;
+  const e_iq = iq_ref - m.iq;
+  const vd_star = FOC_MOTOR.stepPI(state.pi_d, e_id, dt, 1.0);
+  const vq_star = FOC_MOTOR.stepPI(state.pi_q, e_iq, dt, 1.0);
+
+  const newSt = FOC_MOTOR.stepStandard(m, vd_star, vq_star, state.TL, dt, P);
+  state.motor = newSt;
+
+  state.lastData = {
+    omega: newSt.omega_m, w_ref: state.w_ref,
+    iq_ref: iq_ref, iq: newSt.iq, Te: newSt.Te, TL: state.TL,
+  };
+  state.history.push({ t: state.t, ...state.lastData });
+}
+
+function trimHistory() {
+  const MAX = 3000;
+  if (state.history.length > MAX) {
+    const thin = [];
+    for (let i = 0; i < state.history.length; i += 2) thin.push(state.history[i]);
+    state.history = thin;
+  }
+}
+
+// ===== 画布 =====
+const cvMain = $('cv-main'), ctxM = cvMain.getContext('2d');
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+
+function drawMain() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxM.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const boxW = 100, boxH = 50;
+  const gap = 24;
+
+  const blocks = [
+    { name: 'ω_ref', sub: '目标', color: '#58a6ff' },
+    { name: '速度环 PI', sub: 'Kp_w+Ki_w', color: '#d2a8ff' },
+    { name: 'iq_ref', sub: '电流指令', color: '#d29922' },
+    { name: '电流环', sub: '(内环)', color: '#3fb950' },
+    { name: '电机', sub: 'PMSM', color: '#3fb950' },
+  ];
+
+  const totalW = boxW * blocks.length + gap * (blocks.length - 1);
+  const startX = (W - totalW) / 2;
+  const y = cy - boxH / 2 - 20;
+
+  blocks.forEach((b, i) => {
+    const x = startX + i * (boxW + gap);
+    ctxM.fillStyle = b.color + '22';
+    ctxM.strokeStyle = b.color;
+    ctxM.lineWidth = 2;
+    ctxM.fillRect(x, y, boxW, boxH);
+    ctxM.strokeRect(x, y, boxW, boxH);
+    ctxM.fillStyle = b.color;
+    ctxM.font = 'bold 12px sans-serif';
+    ctxM.textAlign = 'center';
+    ctxM.fillText(b.name, x + boxW/2, y + boxH/2 - 2);
+    ctxM.font = '10px sans-serif';
+    ctxM.fillStyle = '#7d8590';
+    ctxM.fillText(b.sub, x + boxW/2, y + boxH/2 + 14);
+    ctxM.textAlign = 'start';
+
+    if (i < blocks.length - 1) {
+      // 箭头
+      const ax1 = x + boxW;
+      const ax2 = x + boxW + gap;
+      const ay = y + boxH/2;
+      ctxM.strokeStyle = '#7d8590'; ctxM.lineWidth = 1.5;
+      ctxM.beginPath(); ctxM.moveTo(ax1, ay); ctxM.lineTo(ax2, ay); ctxM.stroke();
+      ctxM.fillStyle = '#7d8590';
+      ctxM.beginPath();
+      ctxM.moveTo(ax2, ay);
+      ctxM.lineTo(ax2 - 6*Math.cos(-0.4), ay - 6*Math.sin(-0.4));
+      ctxM.lineTo(ax2 - 6*Math.cos(0.4), ay - 6*Math.sin(0.4));
+      ctxM.closePath(); ctxM.fill();
+    }
+  });
+
+  // 反馈线
+  const lastX = startX + 4 * (boxW + gap) + boxW / 2;
+  const firstX = startX + boxW / 2;
+  const fbY = y + boxH + 60;
+  ctxM.strokeStyle = '#58a6ff';
+  ctxM.lineWidth = 1.5;
+  ctxM.setLineDash([5, 3]);
+  ctxM.beginPath();
+  ctxM.moveTo(lastX, y + boxH);
+  ctxM.lineTo(lastX, fbY);
+  ctxM.lineTo(firstX, fbY);
+  ctxM.lineTo(firstX, y + boxH);
+  ctxM.stroke();
+  ctxM.setLineDash([]);
+  ctxM.fillStyle = '#58a6ff';
+  ctxM.font = '11px sans-serif';
+  ctxM.textAlign = 'center';
+  ctxM.fillText('ω 反馈（编码器）', W/2, fbY + 16);
+  ctxM.textAlign = 'start';
+
+  // 标题
+  ctxM.fillStyle = '#e6edf3';
+  ctxM.font = 'bold 13px sans-serif';
+  ctxM.fillText('速度环（外环）：输出 iq_ref 给电流环', 12, 22);
+  ctxM.fillStyle = '#7d8590';
+  ctxM.font = '11px sans-serif';
+  ctxM.fillText('（带宽 ~1kHz，比电流环慢）', 12, 40);
+}
+
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 40, midY = H/2;
+
+  ctxW.strokeStyle = '#30363d';
+  ctxW.beginPath(); ctxW.moveTo(pad, midY); ctxW.lineTo(W-pad, midY); ctxW.stroke();
+
+  const tMax = Math.max(5, state.history.length ? state.history[state.history.length-1].t : 0);
+  ctxW.fillStyle = '#7d8590'; ctxW.font = '10px sans-serif';
+  for (let k = 0; k <= 5; k++) {
+    const x = pad + (W-2*pad) * k/5;
+    ctxW.fillText((k*tMax/5).toFixed(1)+'s', x-14, H-6);
+  }
+
+  if (state.history.length < 2) {
+    ctxW.fillStyle = '#7d8590'; ctxW.font = '12px sans-serif';
+    ctxW.fillText('按"开始仿真"查看波形', W/2 - 60, midY - 10);
+    return;
+  }
+
+  let wMax = 0.5;
+  state.history.forEach(h => {
+    wMax = Math.max(wMax, Math.abs(h.omega), Math.abs(h.w_ref));
+  });
+  wMax *= 1.2;
+
+  const amp = (H/2 - 20) / wMax;
+  const xNow = pad + (W-2*pad) * Math.min(1, state.t / tMax);
+
+  // ω_ref（虚线）
+  ctxW.strokeStyle = '#3fb950'; ctxW.setLineDash([4,3]); ctxW.lineWidth = 1.5;
+  ctxW.beginPath();
+  ctxW.moveTo(pad, midY - state.w_ref * amp);
+  ctxW.lineTo(pad + (W-2*pad) * (state.history[state.history.length-1].t / tMax), midY - state.w_ref * amp);
+  ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // ω（实际）
+  ctxW.strokeStyle = '#58a6ff'; ctxW.lineWidth = 2;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = pad + (W-2*pad) * (h.t / tMax);
+    const y = midY - h.omega * amp;
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  // 时间游标
+  ctxW.strokeStyle = '#58a6ff'; ctxW.setLineDash([3,3]);
+  ctxW.beginPath(); ctxW.moveTo(xNow, 6); ctxW.lineTo(xNow, H-6); ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // 图例
+  ctxW.font = '11px sans-serif';
+  ctxW.fillStyle = '#3fb950'; ctxW.fillText('ω_ref（目标）', pad + 6, 14);
+  ctxW.fillStyle = '#58a6ff'; ctxW.fillText('ω_act（实际）', pad + 110, 14);
+
+  // 静差
+  const last = state.history[state.history.length-1];
+  const err = last.w_ref - last.omega;
+  ctxW.fillStyle = Math.abs(err) < 0.2 ? '#3fb950' : '#f0b429';
+  ctxW.font = 'bold 11px monospace';
+  ctxW.fillText('静差 Δω = ' + err.toFixed(3) + ' rad/s', pad + 6, H - 10);
+}
+
+function draw() {
+  drawMain();
+  drawWave();
+  const d = state.lastData;
+  if (d) {
+    $('d-wref').textContent = d.w_ref.toFixed(3);
+    $('d-wact').textContent = d.omega.toFixed(3);
+    $('d-err').textContent = (d.w_ref - d.omega).toFixed(3);
+    $('d-iqref').textContent = d.iq_ref.toFixed(3);
+    $('d-iq').textContent = d.iq.toFixed(3);
+    $('d-te').textContent = d.Te.toFixed(3);
+  }
+}
+
+window.addEventListener('load', () => { resetSim(); draw(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  let realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  const steps = Math.max(1, Math.round(realDt / state.dt));
+  for (let k = 0; k < steps; k++) {
+    state.t += state.dt;
+    stepOnce();
+  }
+  trimHistory();
+
+  $('s-t').value = Math.min(5, state.t);
+  $('v-t').textContent = state.t.toFixed(2)+' s';
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetSim();
+draw();
+</script>
+</body>
+</html>

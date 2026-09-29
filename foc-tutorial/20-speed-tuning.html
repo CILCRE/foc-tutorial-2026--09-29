@@ -1,0 +1,324 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>20 · 速度环调参 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .preset-list { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:8px; font-size:11px; font-family:monospace; }
+  .preset-row { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:4px; cursor:pointer; }
+  .preset-row:hover { background:#21262d; }
+  .preset-row.active { background:#1f6feb22; outline:1px solid #58a6ff; outline-offset:-1px; }
+  .dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .preset-row .pname { flex:1; }
+  .preset-row .pval { color:#7d8590; font-size:10px; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 320px 1fr;">
+  <div class="panel">
+    <h3>速度环调参</h3>
+
+    <div style="background:#d2a8ff22;border-left:3px solid #d2a8ff;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#d2a8ff;">第四部分 · PI 调参</b><br>
+      4 组参数对比
+    </div>
+
+    <div class="section-title">4 组预设（点选编辑）</div>
+    <div class="preset-list" id="preset-list">
+      <div class="preset-row" data-key="slow" style="color:#7d8590;">
+        <input type="checkbox" checked style="accent-color:#7d8590;">
+        <span class="dot" style="background:#7d8590;"></span>
+        <span class="pname">慢响应</span>
+        <span class="pval">Kp=0.1 Ki=0.3</span>
+      </div>
+      <div class="preset-row active" data-key="ideal" style="color:#3fb950;">
+        <input type="checkbox" checked style="accent-color:#3fb950;">
+        <span class="dot" style="background:#3fb950;"></span>
+        <span class="pname">理想</span>
+        <span class="pval">Kp=0.5 Ki=2.0</span>
+      </div>
+      <div class="preset-row" data-key="over" style="color:#d29922;">
+        <input type="checkbox" checked style="accent-color:#d29922;">
+        <span class="dot" style="background:#d29922;"></span>
+        <span class="pname">有超调</span>
+        <span class="pval">Kp=1.5 Ki=5.0</span>
+      </div>
+      <div class="preset-row" data-key="osc" style="color:#f85149;">
+        <input type="checkbox" checked style="accent-color:#f85149;">
+        <span class="dot" style="background:#f85149;"></span>
+        <span class="pname">振荡</span>
+        <span class="pval">Kp=3.0 Ki=8.0</span>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:16px;">调当前高亮组</div>
+    <div class="section-title">Kp_w <span id="v-kp">0.50</span></div>
+    <input type="range" id="s-kp" min="0.05" max="5" step="0.05" value="0.5" style="width:100%;">
+
+    <div class="section-title">Ki_w <span id="v-ki">2.00</span></div>
+    <input type="range" id="s-ki" min="0" max="20" step="0.1" value="2" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-recompute" style="width:100%">↻ 重新计算曲线</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">曲线指标（可复制）</div>
+    <div class="info-box" id="metrics-box">
+      <!-- 动态填充 -->
+    </div>
+
+    <div class="section-title">调参口诀</div>
+    <div class="hint">
+      <b style="color:#58a6ff;">Kp ↑</b>：响应快，但容易超调、振荡<br>
+      <b style="color:#3fb950;">Ki ↑</b>：消除静差，但太大振荡、太慢迟钝<br>
+      <b style="color:#d2a8ff;">理想</b>：快、稳、无静差
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="section-title" style="margin-top:0;">转速阶跃响应对比</div>
+      <canvas id="cv-main" data-fit="420"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>速度环调参：</b>调速度环的 Kp_w / Ki_w，观察转速响应的差异。<br>
+  <b>慢响应</b>（Kp 小）：曲线缓慢上升；<b>理想</b>：快速稳定；<b>有超调</b>（Kp 大）：冲过目标再回来；
+  <b>振荡</b>（Kp/Ki 都大）：在目标附近来回摆。<br>
+  <b>实际调参</b>：先调 Kp 让响应快（但不要振荡），再调 Ki 消除静差（但不要振荡）。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+const PRESETS = {
+  slow:  { name: '慢响应', color: '#7d8590', Kp_w: 0.1, Ki_w: 0.3, enabled: true },
+  ideal: { name: '理想',   color: '#3fb950', Kp_w: 0.5, Ki_w: 2.0, enabled: true },
+  over:  { name: '有超调', color: '#d29922', Kp_w: 1.5, Ki_w: 5.0, enabled: true },
+  osc:   { name: '振荡',   color: '#f85149', Kp_w: 3.0, Ki_w: 8.0, enabled: true },
+};
+
+const state = {
+  editing: 'ideal',
+  w_ref: 15,
+  duration: 3,
+  dt: 0.0005,
+};
+
+const $ = id => document.getElementById(id);
+
+// ===== 对每组参数跑一遍仿真 =====
+function simulateOne(preset) {
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  let m = FOC_MOTOR.createState();
+  const pi_w = FOC_MOTOR.createPIController(preset.Kp_w, preset.Ki_w);
+  const pi_d = FOC_MOTOR.createPIController(10, 200);
+  const pi_q = FOC_MOTOR.createPIController(10, 200);
+  const dt = state.dt;
+  const steps = Math.floor(state.duration / dt);
+  const data = [];
+  let t = 0;
+  for (let k = 0; k < steps; k++) {
+    const e_w = state.w_ref - m.omega_m;
+    const iq_ref = FOC_MOTOR.stepPI(pi_w, e_w, dt, 1.5);
+    const vd_star = FOC_MOTOR.stepPI(pi_d, 0 - m.id, dt, 1.0);
+    const vq_star = FOC_MOTOR.stepPI(pi_q, iq_ref - m.iq, dt, 1.0);
+    m = FOC_MOTOR.stepStandard(m, vd_star, vq_star, 0, dt, P);
+    if (k % 5 === 0) data.push({ t, w: m.omega_m, iq: m.iq, iq_ref });
+    t += dt;
+  }
+  return data;
+}
+
+// ===== 关键指标 =====
+function computeMetrics(data, w_ref) {
+  if (data.length < 2) return { rise: 0, over: 0, settle: 0, err: 0 };
+  let t10 = null, t90 = null;
+  for (const d of data) {
+    if (t10 === null && d.w >= w_ref * 0.1) t10 = d.t;
+    if (t90 === null && d.w >= w_ref * 0.9) { t90 = d.t; break; }
+  }
+  const rise = (t10 !== null && t90 !== null) ? (t90 - t10) : 0;
+  let maxW = 0;
+  data.forEach(d => { maxW = Math.max(maxW, d.w); });
+  const over = maxW > w_ref ? ((maxW - w_ref) / w_ref * 100) : 0;
+  const last = data[data.length - 1];
+  const err = w_ref - last.w;
+  let settle = state.duration;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (Math.abs(data[i].w - w_ref) > w_ref * 0.05) {
+      settle = data[i].t;
+      break;
+    }
+  }
+  return { rise, over, settle, err };
+}
+
+let simCache = {};
+
+function runAllSims() {
+  simCache = {};
+  for (const key in PRESETS) {
+    if (PRESETS[key].enabled) simCache[key] = simulateOne(PRESETS[key]);
+  }
+  updateMetrics();
+  draw();
+}
+
+function updateMetrics() {
+  const box = $('metrics-box');
+  let html = '';
+  for (const key in PRESETS) {
+    if (!PRESETS[key].enabled || !simCache[key]) continue;
+    const p = PRESETS[key];
+    const m = computeMetrics(simCache[key], state.w_ref);
+    html += `<div class="row" style="color:${p.color};">
+      <span>${p.name}</span>
+      <span style="font-size:10px;">上升 ${m.rise.toFixed(2)}s · 超调 ${m.over.toFixed(0)}% · 调节 ${m.settle.toFixed(2)}s</span>
+    </div>`;
+  }
+  box.innerHTML = html || '<div style="color:#7d8590;">（请至少勾选一组）</div>';
+}
+
+// ===== 预设列表事件 =====
+function renderPresetList() {
+  document.querySelectorAll('.preset-row').forEach(row => {
+    const key = row.dataset.key;
+    const p = PRESETS[key];
+    row.classList.toggle('active', key === state.editing);
+    row.style.color = p.color;
+    row.querySelector('.pval').textContent = `Kp=${p.Kp_w.toFixed(1)} Ki=${p.Ki_w.toFixed(1)}`;
+  });
+}
+
+document.querySelectorAll('.preset-row').forEach(row => {
+  const key = row.dataset.key;
+  const cb = row.querySelector('input[type=checkbox]');
+  // 点行 → 切换编辑
+  row.onclick = (ev) => {
+    if (ev.target.tagName === 'INPUT') return;
+    state.editing = key;
+    const p = PRESETS[key];
+    $('s-kp').value = p.Kp_w;
+    $('s-ki').value = p.Ki_w;
+    $('v-kp').textContent = p.Kp_w.toFixed(2);
+    $('v-ki').textContent = p.Ki_w.toFixed(2);
+    renderPresetList();
+  };
+  // checkbox → 切换 enabled
+  cb.onclick = (ev) => {
+    ev.stopPropagation();
+    PRESETS[key].enabled = cb.checked;
+    runAllSims();
+  };
+});
+
+// ===== 滑块事件 =====
+$('s-kp').oninput = e => {
+  const v = +e.target.value;
+  $('v-kp').textContent = v.toFixed(2);
+  PRESETS[state.editing].Kp_w = v;
+  renderPresetList();
+  runAllSims();
+};
+$('s-ki').oninput = e => {
+  const v = +e.target.value;
+  $('v-ki').textContent = v.toFixed(2);
+  PRESETS[state.editing].Ki_w = v;
+  renderPresetList();
+  runAllSims();
+};
+
+$('btn-recompute').onclick = () => { runAllSims(); };
+
+// ===== 画布 =====
+const cvMain = $('cv-main'), ctx = cvMain.getContext('2d');
+
+function draw() {
+  const W = cvMain.clientWidth, H = cvMain.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+  const pad = 55;
+  const plotX = pad, plotY = 30;
+  const plotW = W - pad * 2, plotH = H - plotY - 50;
+
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(plotX, plotY, plotW, plotH);
+  ctx.strokeStyle = '#30363d';
+  ctx.strokeRect(plotX, plotY, plotW, plotH);
+
+  ctx.fillStyle = '#7d8590'; ctx.font = '11px sans-serif';
+  ctx.fillText('ω (rad/s)', plotX - 48, plotY + 12);
+  ctx.fillText('t (s)', plotX + plotW - 20, plotY + plotH + 20);
+
+  const tMax = state.duration;
+  const wMax = state.w_ref * 1.6;
+
+  function mapX(t) { return plotX + (t / tMax) * plotW; }
+  function mapY(w) { return plotY + plotH - (w / wMax) * plotH; }
+
+  // 网格
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    const y = plotY + plotH * k / 4;
+    ctx.beginPath(); ctx.moveTo(plotX, y); ctx.lineTo(plotX + plotW, y); ctx.stroke();
+  }
+
+  // 目标线
+  ctx.strokeStyle = '#3fb950'; ctx.setLineDash([5,3]); ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(plotX, mapY(state.w_ref));
+  ctx.lineTo(plotX + plotW, mapY(state.w_ref));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#3fb950'; ctx.font = '11px sans-serif';
+  ctx.fillText('目标 ω_ref = ' + state.w_ref.toFixed(2), plotX + 8, mapY(state.w_ref) - 6);
+
+  // 每条曲线
+  for (const key in simCache) {
+    const p = PRESETS[key];
+    const data = simCache[key];
+    if (!data || data.length < 2) continue;
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = (key === state.editing) ? 2.5 : 1.8;
+    ctx.beginPath();
+    data.forEach((d, i) => {
+      const x = mapX(d.t), y = mapY(d.w);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // 图例
+  let lx = plotX + plotW - 140;
+  let ly = plotY + 16;
+  for (const key in PRESETS) {
+    if (!PRESETS[key].enabled) continue;
+    const p = PRESETS[key];
+    ctx.fillStyle = p.color;
+    ctx.fillRect(lx, ly - 6, 12, 3);
+    ctx.font = '11px sans-serif';
+    ctx.fillText(p.name, lx + 18, ly);
+    ly += 14;
+  }
+}
+
+window.addEventListener('load', () => { renderPresetList(); runAllSims(); });
+window.addEventListener('resize', () => setTimeout(draw, 120));
+renderPresetList();
+runAllSims();
+</script>
+</body>
+</html>

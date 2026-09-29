@@ -1,0 +1,414 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>FOC 可视化教程 · 目录</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .hero { padding: 40px 24px 0; max-width: 1400px; margin: 0 auto; }
+  .hero h1 { font-size: 28px; margin-bottom: 8px; }
+  .hero p { color: #7d8590; font-size: 14px; }
+  .hero .badge { display: inline-block; padding: 3px 10px; background: #1f6feb33; color: #58a6ff; border-radius: 4px; font-size: 12px; margin-right: 8px; }
+  .footer { padding: 24px; text-align: center; color: #484f58; font-size: 12px; }
+  .overview { padding: 0 24px 24px; max-width: 1400px; margin: 0 auto; }
+  .overview .box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.9; color: #c9d1d9; }
+  .overview .box b { color: #58a6ff; }
+  .overview .arrow-row { font-family: monospace; color: #d2a8ff; font-size: 12px; padding: 8px 0; }
+
+  /* 五部分分组 */
+  .part-section { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .part-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0 16px; margin-bottom: 8px;
+    border-bottom: 2px solid;
+  }
+  .part-header .part-num {
+    font-size: 24px; font-weight: 800;
+  }
+  .part-header .part-title {
+    font-size: 18px; font-weight: 700;
+  }
+  .part-header .part-desc {
+    font-size: 12px; color: #7d8590; margin-left: auto;
+  }
+  .cards {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    display: block; padding: 20px 20px 20px 24px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    border-left: 4px solid; transition: all .2s ease;
+    position: relative; cursor: pointer;
+  }
+  .card:hover { transform: translateY(-3px); background: #1c2128; text-decoration: none; }
+  .card:active { transform: translateY(-1px); }
+  .card::after {
+    content: '→'; position: absolute; top: 20px; right: 20px;
+    color: #484f58; transition: all .2s; font-size: 16px;
+  }
+  .card:hover::after { transform: translateX(4px); }
+  .card .num {
+    font-size: 11px; letter-spacing: 1.5px; margin-bottom: 6px;
+    font-weight: 700; display: inline-block; padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .card .name { font-size: 16px; font-weight: 600; color: #e6edf3; margin-bottom: 8px; }
+  .card .desc { font-size: 12px; color: #7d8590; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="hero">
+  <h1>FOC 磁场定向控制 · 可视化教程</h1>
+  <p>
+    <span class="badge">教学演示</span>
+    <span class="badge">纯原生 JS</span>
+    <span class="badge">25 个模块</span>
+    <span class="badge">5 大部分</span>
+    一步步看懂 FOC 的数学、物理与控制本质
+  </p>
+</div>
+
+<!-- 核心思想 + 流程图（保留）-->
+<div class="overview">
+  <div class="box">
+    <b>FOC 的核心思想：</b>把三相交流电机等效成直流电机来控制。
+    在 d-q 坐标系下，原本旋转的交流量变成了恒定的直流量——这就是 FOC 能用 PI 精确控制电流的根本原因。
+
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center;">
+      <button id="flow-btn-simple" class="flow-btn on" style="padding:5px 14px;font-size:12px;background:#1f6feb;color:#fff;border:none;border-radius:6px;cursor:pointer;">简版</button>
+      <button id="flow-btn-full" class="flow-btn" style="padding:5px 14px;font-size:12px;background:#21262d;color:#7d8590;border:1px solid #30363d;border-radius:6px;cursor:pointer;">完整版</button>
+    </div>
+
+    <!-- 简版 -->
+    <div id="flow-simple" style="margin-top:14px;">
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:16px;overflow-x:auto;">
+        <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-family:monospace;font-size:12px;">
+          <span style="background:#f8514933;color:#f85149;border:1px solid #f8514955;border-radius:4px;padding:4px 10px;">三相电流</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#58a6ff33;color:#58a6ff;border:1px solid #58a6ff55;border-radius:4px;padding:4px 10px;">Clarke</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#58a6ff33;color:#58a6ff;border:1px solid #58a6ff55;border-radius:4px;padding:4px 10px;">iα, iβ</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#d2a8ff33;color:#d2a8ff;border:1px solid #d2a8ff55;border-radius:4px;padding:4px 10px;">Park</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#d2a8ff33;color:#d2a8ff;border:1px solid #d2a8ff55;border-radius:4px;padding:4px 10px;">id, iq</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#3fb95033;color:#3fb950;border:1px solid #3fb95055;border-radius:4px;padding:4px 10px;">PI 控制</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#d2a8ff33;color:#d2a8ff;border:1px solid #d2a8ff55;border-radius:4px;padding:4px 10px;">逆 Park</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#58a6ff33;color:#58a6ff;border:1px solid #58a6ff55;border-radius:4px;padding:4px 10px;">逆 Clarke</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#f0b42933;color:#f0b429;border:1px solid #f0b42955;border-radius:4px;padding:4px 10px;">SVPWM</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#f8514933;color:#f85149;border:1px solid #f8514955;border-radius:4px;padding:4px 10px;">逆变器</span>
+          <span style="color:#7d8590;">→</span>
+          <span style="background:#3fb95033;color:#3fb950;border:1px solid #3fb95055;border-radius:4px;padding:4px 10px;">电机</span>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #30363d;display:flex;align-items:center;gap:8px;font-family:monospace;font-size:11px;color:#7d8590;">
+          <span style="color:#d2a8ff;">↻ 编码器 / 观测器</span>
+          <span>→ 提供 θ（转子角）、ω（速度）→ 供 Park / 逆 Park / 速度环使用</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 完整版（两条独立流程线）-->
+    <div id="flow-full" style="margin-top:14px;display:none;">
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:20px;overflow-x:auto;font-family:monospace;font-size:11px;">
+        <div style="margin-bottom:20px;">
+          <div style="color:#f0b429;font-size:12px;font-weight:bold;margin-bottom:10px;">▸ 主线：SVPWM（空间矢量脉宽调制）—— 最常用</div>
+          <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+            <div style="background:#f8514933;border:1px solid #f85149;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#f85149;font-weight:bold;">三相电流</div><div style="color:#7d8590;font-size:10px;">ia, ib, ic</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#58a6ff33;border:1px solid #58a6ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#58a6ff;font-weight:bold;">Clarke</div><div style="color:#7d8590;font-size:10px;">3→2 相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#58a6ff33;border:1px solid #58a6ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#58a6ff;font-weight:bold;">iα, iβ</div><div style="color:#7d8590;font-size:10px;">静止两相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#d2a8ff33;border:1px solid #d2a8ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#d2a8ff;font-weight:bold;">Park</div><div style="color:#7d8590;font-size:10px;">用 θ</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#d2a8ff33;border:1px solid #d2a8ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#d2a8ff;font-weight:bold;">id, iq</div><div style="color:#7d8590;font-size:10px;">旋转两相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#3fb95033;border:1px solid #3fb950;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#3fb950;font-weight:bold;">双环 PI</div><div style="color:#7d8590;font-size:10px;">速度+电流</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#3fb95033;border:1px solid #3fb950;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#3fb950;font-weight:bold;">vd*, vq*</div><div style="color:#7d8590;font-size:10px;">电压指令</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#21262d;border:1px solid #7d8590;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#e6edf3;font-weight:bold;">逆 Park</div><div style="color:#7d8590;font-size:10px;">用 θ</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#58a6ff33;border:1px solid #58a6ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#58a6ff;font-weight:bold;">vα, vβ</div><div style="color:#7d8590;font-size:10px;">电压矢量</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#f0b42933;border:1px solid #f0b429;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#f0b429;font-weight:bold;">SVPWM</div><div style="color:#7d8590;font-size:10px;">空间矢量</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#f8514933;border:1px solid #f85149;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#f85149;font-weight:bold;">逆变器</div><div style="color:#7d8590;font-size:10px;">6×MOS</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#3fb95033;border:1px solid #3fb950;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#3fb950;font-weight:bold;">电机</div><div style="color:#7d8590;font-size:10px;">PMSM</div></div>
+          </div>
+          <div style="color:#7d8590;font-size:10px;margin-top:8px;line-height:1.6;">
+            ✓ vα/vβ <b style="color:#f0b429;">直接</b>进 SVPWM，不需要逆 Clarke<br>
+            ✓ 电压利用率高：<b style="color:#3fb950;">Vdc / √3 ≈ 0.577·Vdc</b><br>
+            ✓ 谐波少、转矩平稳 —— 现代 FOC 的主流方案
+          </div>
+        </div>
+        <div style="border-top:1px dashed #30363d;margin:8px 0 20px;"></div>
+        <div>
+          <div style="color:#d2a8ff;font-size:12px;font-weight:bold;margin-bottom:10px;">▸ 对比：SPWM（正弦脉宽调制）—— 传统方案</div>
+          <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+            <div style="background:#f8514933;border:1px solid #f85149;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#f85149;font-weight:bold;">三相电流</div><div style="color:#7d8590;font-size:10px;">ia, ib, ic</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#58a6ff33;border:1px solid #58a6ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#58a6ff;font-weight:bold;">Clarke</div><div style="color:#7d8590;font-size:10px;">3→2 相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#58a6ff33;border:1px solid #58a6ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#58a6ff;font-weight:bold;">iα, iβ</div><div style="color:#7d8590;font-size:10px;">静止两相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#d2a8ff33;border:1px solid #d2a8ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#d2a8ff;font-weight:bold;">Park</div><div style="color:#7d8590;font-size:10px;">用 θ</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#d2a8ff33;border:1px solid #d2a8ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#d2a8ff;font-weight:bold;">id, iq</div><div style="color:#7d8590;font-size:10px;">旋转两相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#3fb95033;border:1px solid #3fb950;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#3fb950;font-weight:bold;">双环 PI</div><div style="color:#7d8590;font-size:10px;">速度+电流</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#3fb95033;border:1px solid #3fb950;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#3fb950;font-weight:bold;">vd*, vq*</div><div style="color:#7d8590;font-size:10px;">电压指令</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#21262d;border:1px solid #7d8590;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#e6edf3;font-weight:bold;">逆 Park</div><div style="color:#7d8590;font-size:10px;">用 θ</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#58a6ff33;border:1px solid #58a6ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#58a6ff;font-weight:bold;">vα, vβ</div><div style="color:#7d8590;font-size:10px;">电压矢量</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#21262d;border:1px solid #7d8590;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#e6edf3;font-weight:bold;">逆 Clarke</div><div style="color:#7d8590;font-size:10px;">2→3 相</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#f0b42933;border:1px solid #f0b429;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#f0b429;font-weight:bold;">va, vb, vc</div><div style="color:#7d8590;font-size:10px;">三相电压</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#d2a8ff33;border:1px solid #d2a8ff;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#d2a8ff;font-weight:bold;">SPWM</div><div style="color:#7d8590;font-size:10px;">正弦调制</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#f8514933;border:1px solid #f85149;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#f85149;font-weight:bold;">逆变器</div><div style="color:#7d8590;font-size:10px;">6×MOS</div></div>
+            <span style="color:#7d8590;">→</span>
+            <div style="background:#3fb95033;border:1px solid #3fb950;border-radius:4px;padding:6px 10px;text-align:center;"><div style="color:#3fb950;font-weight:bold;">电机</div><div style="color:#7d8590;font-size:10px;">PMSM</div></div>
+          </div>
+          <div style="color:#7d8590;font-size:10px;margin-top:8px;line-height:1.6;">
+            ✗ vα/vβ 需要先<b style="color:#d2a8ff;">逆 Clarke</b> 得到三相 va/vb/vc<br>
+            ✗ 电压利用率低：<b style="color:#f85149;">Vdc / 2 = 0.5·Vdc</b>（比 SVPWM 低约 15%）<br>
+            ✗ 谐波多 —— 老式变频器常用，现代 FOC 已被 SVPWM 替代
+          </div>
+        </div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px dashed #30363d;display:flex;gap:24px;flex-wrap:wrap;font-size:10px;color:#7d8590;">
+          <span style="color:#d2a8ff;">↻ 编码器 → θ（供 Park / 逆 Park）</span>
+          <span style="color:#d2a8ff;">↻ 编码器 → ω（反馈到速度环）</span>
+          <span style="color:#3fb950;">↻ 电流采样 → id, iq（反馈到电流环）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 第一部分：坐标变换（蓝）============ -->
+<div class="part-section">
+  <div class="part-header" style="border-color:#58a6ff;color:#58a6ff;">
+    <span class="part-num">①</span>
+    <span class="part-title">坐标变换</span>
+    <span class="part-desc">把三相交流量转成两相直流量</span>
+  </div>
+  <div class="cards">
+    <a class="card" href="01-three-phase.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">01</div>
+      <div class="name">三相电流</div>
+      <div class="desc">三个正弦电流波形 + 相位差 120°</div>
+    </a>
+    <a class="card" href="02-synth-vector.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">02</div>
+      <div class="name">合成旋转矢量</div>
+      <div class="desc">三个脉振矢量合成一个旋转矢量（含物理视角）</div>
+    </a>
+    <a class="card" href="03-clarke.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">03</div>
+      <div class="name">Clarke 变换</div>
+      <div class="desc">3 相 → 2 相（α-β）数学 + 波形对比</div>
+    </a>
+    <a class="card" href="04-park.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">04</div>
+      <div class="name">Park 变换 ★</div>
+      <div class="desc">α-β → d-q 旋转坐标（FOC 灵魂）+ φ 滑块</div>
+    </a>
+    <a class="card" href="05-inv-park.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">05</div>
+      <div class="name">逆 Park 变换</div>
+      <div class="desc">d-q → α-β 的逆运算</div>
+    </a>
+    <a class="card" href="06-inv-clarke.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">06</div>
+      <div class="name">逆 Clarke 变换</div>
+      <div class="desc">α-β → 3 相（a-b-c）</div>
+    </a>
+    <a class="card" href="07-coord-summary.html" style="border-left-color:#58a6ff;">
+      <div class="num" style="background:#58a6ff33;color:#58a6ff;">07</div>
+      <div class="name">坐标变换总结</div>
+      <div class="desc">4 个变换的关系图 + 对比</div>
+    </a>
+  </div>
+</div>
+
+<!-- ============ 第二部分：SVPWM（黄）============ -->
+<div class="part-section">
+  <div class="part-header" style="border-color:#f0b429;color:#f0b429;">
+    <span class="part-num">②</span>
+    <span class="part-title">SVPWM 空间矢量调制</span>
+    <span class="part-desc">把电压矢量翻译成 6 路 PWM</span>
+  </div>
+  <div class="cards">
+    <a class="card" href="08-svpwm-intro.html" style="border-left-color:#f0b429;">
+      <div class="num" style="background:#f0b42933;color:#f0b429;">08</div>
+      <div class="name">SVPWM 是什么</div>
+      <div class="desc">输入 vα/vβ → 输出 6 路 PWM（最核心概念）</div>
+    </a>
+    <a class="card" href="09-base-vectors.html" style="border-left-color:#f0b429;">
+      <div class="num" style="background:#f0b42933;color:#f0b429;">09</div>
+      <div class="name">6 个基本矢量</div>
+      <div class="desc">逆变器 8 个开关状态 + 六边形 + V1~V6</div>
+    </a>
+    <a class="card" href="10-sector.html" style="border-left-color:#f0b429;">
+      <div class="num" style="background:#f0b42933;color:#f0b429;">10</div>
+      <div class="name">扇区判断</div>
+      <div class="desc">vα/vβ 落在哪个扇区 + 实时高亮</div>
+    </a>
+    <a class="card" href="11-synthesis.html" style="border-left-color:#f0b429;">
+      <div class="num" style="background:#f0b42933;color:#f0b429;">11</div>
+      <div class="name">矢量合成</div>
+      <div class="desc">T1/T2/T0 时间分配 + 动画演示</div>
+    </a>
+    <a class="card" href="12-pwm-wave.html" style="border-left-color:#f0b429;">
+      <div class="num" style="background:#f0b42933;color:#f0b429;">12</div>
+      <div class="name">6 路 PWM 波形</div>
+      <div class="desc">开关波形 + 上下桥臂互补</div>
+    </a>
+    <a class="card" href="13-overmod.html" style="border-left-color:#f0b429;">
+      <div class="num" style="background:#f0b42933;color:#f0b429;">13</div>
+      <div class="name">过调制</div>
+      <div class="desc">六边形内 vs 外 + 影响</div>
+    </a>
+  </div>
+</div>
+
+<!-- ============ 第三部分：控制（绿）============ -->
+<div class="part-section">
+  <div class="part-header" style="border-color:#3fb950;color:#3fb950;">
+    <span class="part-num">③</span>
+    <span class="part-title">控制</span>
+    <span class="part-desc">开环、闭环、双闭环</span>
+  </div>
+  <div class="cards">
+    <a class="card" href="14-block-diagram.html" style="border-left-color:#3fb950;">
+      <div class="num" style="background:#3fb95033;color:#3fb950;">14</div>
+      <div class="name">控制框图</div>
+      <div class="desc">FOC 全流程框图（信号流 + 反馈）</div>
+    </a>
+    <a class="card" href="15-openloop.html" style="border-left-color:#3fb950;">
+      <div class="num" style="background:#3fb95033;color:#3fb950;">15</div>
+      <div class="name">开环控制</div>
+      <div class="desc">无反馈 + V/F + 漂移 + 静差</div>
+    </a>
+    <a class="card" href="16-current-loop.html" style="border-left-color:#3fb950;">
+      <div class="num" style="background:#3fb95033;color:#3fb950;">16</div>
+      <div class="name">电流环</div>
+      <div class="desc">内环 + PI + 电流跟踪</div>
+    </a>
+    <a class="card" href="17-speed-loop.html" style="border-left-color:#3fb950;">
+      <div class="num" style="background:#3fb95033;color:#3fb950;">17</div>
+      <div class="name">速度环</div>
+      <div class="desc">外环 + PI + 转速跟踪</div>
+    </a>
+    <a class="card" href="18-dual-loop.html" style="border-left-color:#3fb950;">
+      <div class="num" style="background:#3fb95033;color:#3fb950;">18</div>
+      <div class="name">双闭环</div>
+      <div class="desc">电流环 + 速度环嵌套 + 对比</div>
+    </a>
+  </div>
+</div>
+
+<!-- ============ 第四部分：PI 调参（紫）============ -->
+<div class="part-section">
+  <div class="part-header" style="border-color:#d2a8ff;color:#d2a8ff;">
+    <span class="part-num">④</span>
+    <span class="part-title">PI 调参</span>
+    <span class="part-desc">Kp / Ki 的影响与整定</span>
+  </div>
+  <div class="cards">
+    <a class="card" href="19-pi-principle.html" style="border-left-color:#d2a8ff;">
+      <div class="num" style="background:#d2a8ff33;color:#d2a8ff;">19</div>
+      <div class="name">PI 原理</div>
+      <div class="desc">Kp / Ki 各自作用</div>
+    </a>
+    <a class="card" href="20-speed-tuning.html" style="border-left-color:#d2a8ff;">
+      <div class="num" style="background:#d2a8ff33;color:#d2a8ff;">20</div>
+      <div class="name">速度环调参</div>
+      <div class="desc">4 组预设对比（慢/理想/超调/振荡）</div>
+    </a>
+    <a class="card" href="21-current-tuning.html" style="border-left-color:#d2a8ff;">
+      <div class="num" style="background:#d2a8ff33;color:#d2a8ff;">21</div>
+      <div class="name">电流环调参</div>
+      <div class="desc">4 组预设对比</div>
+    </a>
+  </div>
+</div>
+
+<!-- ============ 第五部分：综合与硬件（红）============ -->
+<div class="part-section">
+  <div class="part-header" style="border-color:#f85149;color:#f85149;">
+    <span class="part-num">⑤</span>
+    <span class="part-title">综合与硬件</span>
+    <span class="part-desc">编码器、综合演示、硬件系统</span>
+  </div>
+  <div class="cards">
+    <a class="card" href="22-encoder.html" style="border-left-color:#f85149;">
+      <div class="num" style="background:#f8514933;color:#f85149;">22</div>
+      <div class="name">编码器与 θ 获取</div>
+      <div class="desc">增量 / 绝对 / 霍尔 / 无感</div>
+    </a>
+    <a class="card" href="23-overview.html" style="border-left-color:#f85149;">
+      <div class="num" style="background:#f8514933;color:#f85149;">23</div>
+      <div class="name">综合演示 ★</div>
+      <div class="desc">一屏看全双闭环</div>
+    </a>
+    <a class="card" href="24-hardware.html" style="border-left-color:#f85149;">
+      <div class="num" style="background:#f8514933;color:#f85149;">24</div>
+      <div class="name">硬件系统</div>
+      <div class="desc">电源 + 驱动板 + 控制板 + 电机</div>
+    </a>
+    <a class="card" href="25-formulas.html" style="border-left-color:#f85149;">
+      <div class="num" style="background:#f8514933;color:#f85149;">25</div>
+      <div class="name">附录：公式汇总</div>
+      <div class="desc">所有核心公式速查</div>
+    </a>
+    <a class="card" href="26-legacy.html" style="border-left-color:#7d8590;">
+      <div class="num" style="background:#7d859033;color:#7d8590;">26</div>
+      <div class="name">旧版资料库</div>
+      <div class="desc">9 个早期版本页面（已被新版替代，保留参考）</div>
+    </a>
+  </div>
+</div>
+
+<div class="footer">
+  FOC 可视化教程 · 本地教学用 · 纯 HTML/CSS/JS，无外部依赖
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+(function() {
+  const btnSimple = document.getElementById('flow-btn-simple');
+  const btnFull = document.getElementById('flow-btn-full');
+  const flowSimple = document.getElementById('flow-simple');
+  const flowFull = document.getElementById('flow-full');
+  if (!btnSimple) return;
+  btnSimple.onclick = () => {
+    btnSimple.style.background = '#1f6feb'; btnSimple.style.color = '#fff'; btnSimple.style.border = 'none';
+    btnFull.style.background = '#21262d'; btnFull.style.color = '#7d8590'; btnFull.style.border = '1px solid #30363d';
+    flowSimple.style.display = 'block'; flowFull.style.display = 'none';
+  };
+  btnFull.onclick = () => {
+    btnFull.style.background = '#1f6feb'; btnFull.style.color = '#fff'; btnFull.style.border = 'none';
+    btnSimple.style.background = '#21262d'; btnSimple.style.color = '#7d8590'; btnSimple.style.border = '1px solid #30363d';
+    flowSimple.style.display = 'none'; flowFull.style.display = 'block';
+  };
+})();
+</script>
+</body>
+</html>

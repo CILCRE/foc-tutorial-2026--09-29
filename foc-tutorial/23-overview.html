@@ -1,0 +1,492 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>23 · 综合演示 | FOC 可视化教程</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .section-title { font-size: 12px; color: #7d8590; margin: 16px 0 6px; }
+  .hint { font-size: 11px; color: #484f58; line-height: 1.7; margin-top: 6px; }
+  .info-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; margin-bottom:12px; font-size:11px; line-height:1.9; font-family:monospace; }
+  .info-box .row { display:flex; justify-content:space-between; }
+  .value-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 10px; font-size: 11px; font-family: monospace; line-height: 1.9;
+  }
+  .value-grid .k { color: #7d8590; }
+  .value-grid .v { text-align: right; }
+  .switch-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .switch-group button { flex: 1; min-width: 60px; padding: 5px 8px; background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 6px; font-size: 11px; cursor: pointer; }
+  .switch-group button.on { background: #f85149; color: #fff; border-color: #f85149; }
+</style>
+</head>
+<body>
+
+<div id="nav"></div>
+
+<div class="wrap" style="grid-template-columns: 300px 1fr;">
+  <div class="panel">
+    <h3>综合演示</h3>
+
+    <div style="background:#f8514922;border-left:3px solid #f85149;border-radius:4px;padding:8px 10px;margin-bottom:12px;font-size:11px;line-height:1.7;">
+      <b style="color:#f85149;">第五部分 · 综合与硬件</b><br>
+      一屏看全 FOC 双闭环
+    </div>
+
+    <div class="section-title">给定转速 ω_ref <span id="v-wref">15.00</span></div>
+    <input type="range" id="s-wref" min="0" max="30" step="0.5" value="15" style="width:100%;">
+
+    <div class="section-title">负载转矩 TL <span id="v-tl">0.00</span></div>
+    <input type="range" id="s-tl" min="0" max="0.5" step="0.01" value="0" style="width:100%;">
+    <div class="switch-group" style="margin-top:6px;">
+      <button id="btn-load-up" style="padding:5px;">+ 加负载</button>
+      <button id="btn-load-zero" style="padding:5px;">归零</button>
+    </div>
+
+    <div class="section-title">动画速度 <span id="v-sp">1.0×</span></div>
+    <input type="range" id="s-sp" min="0.1" max="3" step="0.05" value="1" style="width:100%;">
+
+    <div class="ctrl" style="margin-top:16px;">
+      <button id="btn-play" style="width:100%">▶ 开始仿真</button>
+      <button id="btn-reset" style="width:100%;margin-top:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;">↺ 重置</button>
+    </div>
+
+    <div class="section-title" style="margin-top:20px;">实时数值（可复制）</div>
+    <div class="value-grid">
+      <span class="k">ω_ref</span><span class="v" style="color:#3fb950;" id="v-wref-d">0.000</span>
+      <span class="k">ω_act</span><span class="v" style="color:#58a6ff;" id="v-wact-d">0.000</span>
+      <span class="k">Δω</span><span class="v" style="color:#f0b429;" id="v-err-d">0.000</span>
+      <span class="k">TL</span><span class="v" style="color:#f85149;" id="v-tl-d">0.000</span>
+      <span class="k">id_ref</span><span class="v" style="color:#3fb950;" id="v-idref">0.000</span>
+      <span class="k">id</span><span class="v" style="color:#3fb950;" id="v-id">0.000</span>
+      <span class="k">iq_ref</span><span class="v" style="color:#d29922;" id="v-iqref">0.000</span>
+      <span class="k">iq</span><span class="v" style="color:#d29922;" id="v-iq">0.000</span>
+      <span class="k">Te</span><span class="v" style="color:#f85149;" id="v-te">0.000</span>
+      <span class="k">vd*</span><span class="v" style="color:#58a6ff;" id="v-vd">0.000</span>
+      <span class="k">vq*</span><span class="v" style="color:#58a6ff;" id="v-vq">0.000</span>
+      <span class="k">时间</span><span class="v" id="v-time-d">0.00 s</span>
+    </div>
+  </div>
+
+  <div>
+    <div style="text-align:center; padding: 8px 0 12px;">
+      <h1 style="font-size: 24px; color: #e6edf3; margin: 0; letter-spacing: 2px; font-weight: 700;">
+        FOC 双闭环 · 综合演示
+      </h1>
+      <p style="color: #7d8590; font-size: 12px; margin-top: 6px;">
+        信号流高亮 · 实时波形 · d-q 电流矢量 · 完整数值
+      </p>
+    </div>
+
+    <div class="stage">
+      <div class="section-title" style="margin-top:0;">控制框图（实时高亮信号流）</div>
+      <canvas id="cv-block" data-fit="180"></canvas>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+      <div class="stage">
+        <div class="section-title" style="margin-top:0;">实时波形</div>
+        <canvas id="cv-wave" data-fit="200"></canvas>
+      </div>
+      <div class="stage">
+        <div class="section-title" style="margin-top:0;">d-q 电流矢量</div>
+        <canvas id="cv-dq" data-fit="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>综合演示：</b>这一页把 FOC 双闭环的<b>全流程</b>浓缩到一屏——控制框图实时高亮信号流，
+  右侧波形显示<b>转速跟踪</b>和<b>电流跟踪</b>，d-q 矢量图显示电流矢量相对 d/q 轴的位置。<br>
+  拖动 ω_ref 和 TL 滑块，观察系统如何快速稳定——这就是闭环的威力：<b>无静差、抗扰动、响应快</b>。
+</div>
+
+<script src="assets/foc-math.js"></script>
+<script src="assets/canvas-fit.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/motor-model.js"></script>
+<script>
+const RAD = Math.PI / 180;
+const D2R = d => d * RAD;
+
+const state = {
+  t: 0, playing: false, everStarted: false,
+  speed: 1.0,
+  w_ref: 15, TL: 0,
+  Kp_w: 0.5, Ki_w: 2.0,
+  Kp_d: 10, Ki_d: 200,
+  Kp_q: 10, Ki_q: 200,
+  motor: null,
+  pi_w: null, pi_d: null, pi_q: null,
+  history: [],
+  dt: 0.0005,
+  lastData: null,
+  flowStage: 0,
+};
+
+const $ = id => document.getElementById(id);
+
+function resetSim() {
+  state.motor = FOC_MOTOR.createState();
+  state.pi_w = FOC_MOTOR.createPIController(state.Kp_w, state.Ki_w);
+  state.pi_d = FOC_MOTOR.createPIController(state.Kp_d, state.Ki_d);
+  state.pi_q = FOC_MOTOR.createPIController(state.Kp_q, state.Ki_q);
+  state.t = 0;
+  state.history = [];
+  state.flowStage = 0;
+  state.lastData = {
+    id: 0, iq: 0, Te: 0, vd: 0, vq: 0,
+    omega: 0, w_ref: state.w_ref, TL: state.TL,
+    iq_ref: 0, id_ref: 0,
+  };
+  $('v-time-d').textContent = '0.00 s';
+}
+
+$('s-wref').oninput = e => { state.w_ref = +e.target.value; $('v-wref').textContent = state.w_ref.toFixed(2); };
+$('s-tl').oninput = e => { state.TL = +e.target.value; $('v-tl').textContent = state.TL.toFixed(2); };
+$('s-sp').oninput = e => { state.speed = +e.target.value; $('v-sp').textContent = state.speed.toFixed(1)+'×'; };
+
+$('btn-load-up').onclick = () => {
+  state.TL = Math.min(0.5, state.TL + 0.15);
+  $('s-tl').value = state.TL;
+  $('v-tl').textContent = state.TL.toFixed(2);
+};
+$('btn-load-zero').onclick = () => {
+  state.TL = 0;
+  $('s-tl').value = 0;
+  $('v-tl').textContent = '0.00';
+};
+
+$('btn-play').onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing) { state.everStarted = true; lastT = performance.now(); loop(); }
+  $('btn-play').textContent = state.playing ? '⏸ 暂停' : '▶ 开始仿真';
+};
+
+$('btn-reset').onclick = () => {
+  resetSim();
+  if (!state.everStarted) {
+    state.playing = false;
+    $('btn-play').textContent = '▶ 开始仿真';
+  } else {
+    state.playing = true;
+    $('btn-play').textContent = '⏸ 暂停';
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+  drawAll();
+};
+
+// ===== 仿真一步 =====
+function stepOnce() {
+  const dt = state.dt;
+  const P = FOC_MOTOR.DEFAULT_PARAMS;
+  const m = state.motor;
+
+  const e_w = state.w_ref - m.omega_m;
+  const iq_ref = FOC_MOTOR.stepPI(state.pi_w, e_w, dt, 1.5);
+  const id_ref = 0;
+
+  const vd_star = FOC_MOTOR.stepPI(state.pi_d, id_ref - m.id, dt, 1.0);
+  const vq_star = FOC_MOTOR.stepPI(state.pi_q, iq_ref - m.iq, dt, 1.0);
+
+  const newSt = FOC_MOTOR.stepStandard(m, vd_star, vq_star, state.TL, dt, P);
+  state.motor = newSt;
+
+  state.lastData = {
+    id: newSt.id, iq: newSt.iq, Te: newSt.Te,
+    vd: vd_star, vq: vq_star,
+    omega: newSt.omega_m, w_ref: state.w_ref, TL: state.TL,
+    iq_ref: iq_ref, id_ref: id_ref,
+  };
+  state.history.push({ t: state.t, ...state.lastData });
+
+  state.flowStage = Math.floor(state.t * 10) % 6;
+}
+
+function trimHistory() {
+  const MAX = 3000;
+  if (state.history.length > MAX) {
+    const thin = [];
+    for (let i = 0; i < state.history.length; i += 2) thin.push(state.history[i]);
+    state.history = thin;
+  }
+}
+
+// ===== 画布 =====
+const cvBlock = $('cv-block'), ctxB = cvBlock.getContext('2d');
+const cvWave = $('cv-wave'), ctxW = cvWave.getContext('2d');
+const cvDQ = $('cv-dq'), ctxD = cvDQ.getContext('2d');
+
+function arrow(ctx, x1, y1, x2, y2, color, width, headLen) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = Math.hypot(x2-x1, y2-y1);
+  const hl = Math.max(4, Math.min(headLen, len*0.3));
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hl*Math.cos(ang - 0.4), y2 - hl*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - hl*Math.cos(ang + 0.4), y2 - hl*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ===== 框图（实时高亮）=====
+function drawBlock() {
+  const W = cvBlock.clientWidth, H = cvBlock.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxB.clearRect(0, 0, W, H);
+
+  const boxW = 86, boxH = 40, gap = 12;
+  const labels = ['ω_ref', '速度 PI', '电流 PI', '逆 Park', 'SVPWM', '电机'];
+  const totalW = boxW * labels.length + gap * (labels.length - 1);
+  const startX = (W - totalW) / 2;
+  const y = H / 2 - boxH / 2 - 8;
+
+  labels.forEach((lb, i) => {
+    const x = startX + i * (boxW + gap);
+    const isActive = (i === state.flowStage) && state.playing;
+    ctxB.fillStyle = isActive ? '#1f6feb' : '#21262d';
+    ctxB.strokeStyle = isActive ? '#58a6ff' : '#30363d';
+    ctxB.lineWidth = isActive ? 2 : 1.5;
+    ctxB.fillRect(x, y, boxW, boxH);
+    ctxB.strokeRect(x, y, boxW, boxH);
+    ctxB.fillStyle = isActive ? '#fff' : '#e6edf3';
+    ctxB.font = 'bold 11px sans-serif';
+    ctxB.textAlign = 'center';
+    ctxB.fillText(lb, x + boxW / 2, y + boxH / 2 + 4);
+    ctxB.textAlign = 'start';
+
+    if (i < labels.length - 1) {
+      const ax1 = x + boxW, ax2 = x + boxW + gap, ay = y + boxH/2;
+      ctxB.strokeStyle = '#7d8590'; ctxB.lineWidth = 1.5;
+      ctxB.beginPath(); ctxB.moveTo(ax1, ay); ctxB.lineTo(ax2, ay); ctxB.stroke();
+      ctxB.fillStyle = '#7d8590';
+      ctxB.beginPath();
+      ctxB.moveTo(ax2, ay);
+      ctxB.lineTo(ax2 - 5*Math.cos(-0.4), ay - 5*Math.sin(-0.4));
+      ctxB.lineTo(ax2 - 5*Math.cos(0.4), ay - 5*Math.sin(0.4));
+      ctxB.closePath(); ctxB.fill();
+    }
+  });
+
+  // 反馈线
+  const lastX = startX + 5 * (boxW + gap) + boxW / 2;
+  const firstX = startX + boxW / 2;
+  const fbY = H - 16;
+  ctxB.strokeStyle = '#58a6ff'; ctxB.lineWidth = 1.5;
+  ctxB.beginPath();
+  ctxB.moveTo(lastX, y + boxH);
+  ctxB.lineTo(lastX, fbY);
+  ctxB.lineTo(firstX, fbY);
+  ctxB.lineTo(firstX, y + boxH);
+  ctxB.stroke();
+  ctxB.fillStyle = '#58a6ff';
+  ctxB.font = '10px sans-serif';
+  ctxB.textAlign = 'center';
+  ctxB.fillText('反馈', W / 2, fbY + 10);
+  ctxB.textAlign = 'start';
+}
+
+// ===== 波形 =====
+function drawWave() {
+  const W = cvWave.clientWidth, H = cvWave.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxW.clearRect(0, 0, W, H);
+  const pad = 30, plotH = H - 30;
+
+  ctxW.fillStyle = '#0d1117';
+  ctxW.fillRect(pad, 12, W - pad * 2, plotH - 12);
+  ctxW.strokeStyle = '#30363d';
+  ctxW.strokeRect(pad, 12, W - pad * 2, plotH - 12);
+
+  if (state.history.length < 2) {
+    ctxW.fillStyle = '#7d8590'; ctxW.font = '11px sans-serif';
+    ctxW.fillText('按"开始仿真"', pad + 10, 30);
+    return;
+  }
+
+  const tMax = Math.max(5, state.history[state.history.length-1].t);
+  const halfH = (plotH - 24) / 2;
+
+  // 上半：转速
+  let wMax = 5;
+  state.history.forEach(h => { wMax = Math.max(wMax, Math.abs(h.omega), Math.abs(h.w_ref)); });
+  wMax *= 1.2;
+
+  function mapX(t) { return pad + (t / tMax) * (W - pad*2); }
+  function mapW(w) { return 12 + halfH - (w / wMax) * (halfH - 4); }
+
+  // ω_ref
+  ctxW.strokeStyle = '#3fb950'; ctxW.setLineDash([4,3]); ctxW.lineWidth = 1.2;
+  ctxW.beginPath();
+  ctxW.moveTo(pad, mapW(state.w_ref));
+  ctxW.lineTo(pad + (W-pad*2) * (state.history[state.history.length-1].t / tMax), mapW(state.w_ref));
+  ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // ω
+  ctxW.strokeStyle = '#58a6ff'; ctxW.lineWidth = 1.8;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = mapX(h.t), y = mapW(h.omega);
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  ctxW.fillStyle = '#3fb950'; ctxW.font = '10px sans-serif';
+  ctxW.fillText('ω_ref', pad + 4, 24);
+  ctxW.fillStyle = '#58a6ff';
+  ctxW.fillText('ω', pad + 50, 24);
+
+  // 分隔线
+  ctxW.strokeStyle = '#21262d';
+  ctxW.beginPath();
+  ctxW.moveTo(pad, 12 + halfH);
+  ctxW.lineTo(pad + W - pad*2, 12 + halfH);
+  ctxW.stroke();
+
+  // 下半：电流
+  let iMax = 0.5;
+  state.history.forEach(h => {
+    iMax = Math.max(iMax, Math.abs(h.id), Math.abs(h.iq), Math.abs(h.iq_ref));
+  });
+  iMax *= 1.2;
+
+  function mapI(i) { return 12 + halfH + (halfH - 4) - ((i + iMax) / (2*iMax)) * (halfH - 8); }
+
+  // iq_ref
+  ctxW.strokeStyle = '#d29922'; ctxW.setLineDash([4,3]); ctxW.lineWidth = 1;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = mapX(h.t), y = mapI(h.iq_ref);
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+  ctxW.setLineDash([]);
+
+  // id
+  ctxW.strokeStyle = '#3fb950'; ctxW.lineWidth = 1.5;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = mapX(h.t), y = mapI(h.id);
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  // iq
+  ctxW.strokeStyle = '#d29922'; ctxW.lineWidth = 1.8;
+  ctxW.beginPath();
+  state.history.forEach((h, i) => {
+    const x = mapX(h.t), y = mapI(h.iq);
+    if (i === 0) ctxW.moveTo(x, y); else ctxW.lineTo(x, y);
+  });
+  ctxW.stroke();
+
+  ctxW.fillStyle = '#3fb950'; ctxW.font = '10px sans-serif';
+  ctxW.fillText('id', pad + 4, 12 + halfH + 12);
+  ctxW.fillStyle = '#d29922';
+  ctxW.fillText('iq', pad + 26, 12 + halfH + 12);
+}
+
+// ===== d-q 电流矢量 =====
+function drawDQ() {
+  const W = cvDQ.clientWidth, H = cvDQ.clientHeight;
+  if (W <= 0 || H <= 0) return;
+  ctxD.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const r = Math.min(W, H) * 0.36;
+  const m = state.motor || { id: 0, iq: 0 };
+
+  // 网格圆
+  ctxD.strokeStyle = '#21262d'; ctxD.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) {
+    ctxD.beginPath(); ctxD.arc(cx, cy, r * k / 2, 0, 2*Math.PI); ctxD.stroke();
+  }
+
+  // 轴
+  ctxD.strokeStyle = '#3fb950'; ctxD.lineWidth = 2;
+  ctxD.beginPath(); ctxD.moveTo(cx - r, cy); ctxD.lineTo(cx + r, cy); ctxD.stroke();
+  ctxD.strokeStyle = '#d29922';
+  ctxD.beginPath(); ctxD.moveTo(cx, cy - r); ctxD.lineTo(cx, cy + r); ctxD.stroke();
+
+  ctxD.fillStyle = '#3fb950'; ctxD.font = 'bold 12px sans-serif';
+  ctxD.fillText('d', cx + r + 4, cy + 4);
+  ctxD.fillStyle = '#d29922';
+  ctxD.fillText('q', cx + 4, cy - r - 4);
+
+  // 电流矢量
+  const scale = r / 1.5;
+  const ex = cx + m.id * scale;
+  const ey = cy - m.iq * scale;
+  arrow(ctxD, cx, cy, ex, ey, '#58a6ff', 3, 10);
+
+  // 投影线
+  ctxD.setLineDash([3,3]);
+  ctxD.strokeStyle = '#3fb95088';
+  ctxD.beginPath(); ctxD.moveTo(ex, cy); ctxD.lineTo(ex, ey); ctxD.stroke();
+  ctxD.strokeStyle = '#d2992288';
+  ctxD.beginPath(); ctxD.moveTo(cx, ey); ctxD.lineTo(ex, ey); ctxD.stroke();
+  ctxD.setLineDash([]);
+
+  // 数值
+  ctxD.fillStyle = '#3fb950'; ctxD.font = '11px monospace';
+  ctxD.fillText('id=' + m.id.toFixed(3), 8, H - 24);
+  ctxD.fillStyle = '#d29922';
+  ctxD.fillText('iq=' + m.iq.toFixed(3), 8, H - 10);
+}
+
+function updateValues() {
+  const d = state.lastData;
+  if (!d) return;
+  $('v-wref-d').textContent = d.w_ref.toFixed(3);
+  $('v-wact-d').textContent = d.omega.toFixed(3);
+  $('v-err-d').textContent = (d.w_ref - d.omega).toFixed(3);
+  $('v-tl-d').textContent = d.TL.toFixed(3);
+  $('v-idref').textContent = d.id_ref.toFixed(3);
+  $('v-id').textContent = d.id.toFixed(3);
+  $('v-iqref').textContent = d.iq_ref.toFixed(3);
+  $('v-iq').textContent = d.iq.toFixed(3);
+  $('v-te').textContent = d.Te.toFixed(3);
+  $('v-vd').textContent = d.vd.toFixed(3);
+  $('v-vq').textContent = d.vq.toFixed(3);
+  $('v-time-d').textContent = state.t.toFixed(2) + ' s';
+}
+
+function drawAll() {
+  drawBlock();
+  drawWave();
+  drawDQ();
+  updateValues();
+}
+
+window.addEventListener('load', () => { resetSim(); drawAll(); });
+window.addEventListener('resize', () => setTimeout(drawAll, 120));
+
+let lastT = performance.now();
+function loop() {
+  if (!state.playing) return;
+  const now = performance.now();
+  let realDt = (now - lastT) / 1000 * state.speed;
+  lastT = now;
+  if (realDt > 0.1) realDt = 0.1;
+
+  const steps = Math.max(1, Math.round(realDt / state.dt));
+  for (let k = 0; k < steps; k++) {
+    state.t += state.dt;
+    stepOnce();
+  }
+  trimHistory();
+
+  drawAll();
+  requestAnimationFrame(loop);
+}
+
+resetSim();
+drawAll();
+</script>
+</body>
+</html>
